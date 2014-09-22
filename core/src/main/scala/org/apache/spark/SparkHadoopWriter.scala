@@ -88,7 +88,24 @@ class SparkHadoopWriter(@transient jobConf: JobConf)
     getOutputCommitter().setupTask(getTaskContext())
     writer = getOutputFormat().getRecordWriter(fs, conf.value, outputName, Reporter.NULL)
   }
+  def open(fName: String) {
+    val numfmt = NumberFormat.getInstance()
+    numfmt.setMinimumIntegerDigits(5)
+    numfmt.setGroupingUsed(false)
 
+    val outputName = fName
+    val path = FileOutputFormat.getOutputPath(conf.value)
+    val fs: FileSystem = {
+      if (path != null) {
+        path.getFileSystem(conf.value)
+      } else {
+        FileSystem.get(conf.value)
+      }
+    }
+
+    getOutputCommitter().setupTask(getTaskContext())
+    writer = getOutputFormat().getRecordWriter(fs, conf.value, outputName, Reporter.NULL)
+  }
   def write(key: AnyRef, value: AnyRef) {
     if (writer != null) {
       writer.write(key, value)

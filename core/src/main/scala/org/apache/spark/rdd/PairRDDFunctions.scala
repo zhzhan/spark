@@ -792,6 +792,9 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
     saveAsHadoopFile(path, keyClass, valueClass, fm.runtimeClass.asInstanceOf[Class[F]])
   }
 
+  def saveRecordAsHadoopFile[F <: OutputFormat[K, V]](path: String)(implicit fm: ClassTag[F]) {
+    saveRecordAsHadoopFile(path, keyClass, valueClass, fm.runtimeClass.asInstanceOf[Class[F]])
+  }
   /**
    * Output the RDD to any Hadoop-supported file system, using a Hadoop `OutputFormat` class
    * supporting the key and value types K and V in this RDD. Compress the result with the
@@ -877,7 +880,37 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
       SparkHadoopWriter.createPathFromString(path, hadoopConf))
     saveAsHadoopDataset(hadoopConf)
   }
-
+  /**
+   * Output the RDD to any Hadoop-supported file system, using a Hadoop `OutputFormat` class
+   * supporting the key and value types K and V in this RDD.
+   */
+  def saveRecordAsHadoopFile(
+                        path: String,
+                        keyClass: Class[_],
+                        valueClass: Class[_],
+                        outputFormatClass: Class[_ <: OutputFormat[_, _]],
+                        conf: JobConf = new JobConf(self.context.hadoopConfiguration),
+                        codec: Option[Class[_ <: CompressionCodec]] = None) {
+    // Rename this as hadoopConf internally to avoid shadowing (see SPARK-2038).
+    val hadoopConf = conf
+    hadoopConf.setOutputKeyClass(keyClass)
+    hadoopConf.setOutputValueClass(valueClass)
+    // Doesn't work in Scala 2.9 due to what may be a generics bug
+    // TODO: Should we uncomment this for Scala 2.10?
+    // conf.setOutputFormat(outputFormatClass)
+    hadoopConf.set("mapred.output.format.class", outputFormatClass.getName)
+    for (c <- codec) {
+      hadoopConf.setCompressMapOutput(true)
+      hadoopConf.set("mapred.output.compress", "true")
+      hadoopConf.setMapOutputCompressorClass(c)
+      hadoopConf.set("mapred.output.compression.codec", c.getCanonicalName)
+      hadoopConf.set("mapred.output.compression.type", CompressionType.BLOCK.toString)
+    }
+    hadoopConf.setOutputCommitter(classOf[FileOutputCommitter])
+    FileOutputFormat.setOutputPath(hadoopConf,
+      SparkHadoopWriter.createPathFromString(path, hadoopConf))
+    saveRecordAsHadoopDataset(hadoopConf)
+  }
   /**
    * Output the RDD to any Hadoop-supported storage system with new Hadoop API, using a Hadoop
    * Configuration object for that storage system. The Conf should set an OutputFormat and any
@@ -994,6 +1027,63 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
     self.context.runJob(self, writeToFile)
     writer.commitJob()
   }
+
+  def saveRecordAsHadoopDataset(conf: JobConf) {
+    // Rename this as hadoopConf internally to avoid shadowing (see SPARK-2038).
+    val hadoopConf = conf
+    val outputFormatInstance = hadoopConf.getOutputFormat
+    val keyClass = hadoopConf.getOutputKeyClass
+    val valueClass = hadoopConf.getOutputValueClass
+    if (outputFormatInstance == null) {
+      throw new SparkException("Output format class not set")
+    }
+    if (keyClass == null) {
+      throw new SparkException("Output key class not set")
+    }
+    if (valueClass == null) {
+      throw new SparkException("Output value class not set")
+    }
+    SparkHadoopUtil.get.addCredentials(hadoopConf)
+
+    logDebug("Saving as hadoop file of type (" + keyClass.getSimpleName + ", " +
+      valueClass.getSimpleName + ")")
+
+    if (self.conf.getBoolean("spark.hadoop.validateOutputSpecs", true)) {
+      // FileOutputFormat ignores the filesystem parameter
+      val ignoredFs = FileSystem.get(hadoopConf)
+      hadoopConf.getOutputFormat.checkOutputSpecs(ignoredFs, hadoopConf)
+    }
+
+    val writer = new SparkHadoopWriter(hadoopConf)
+    writer.preSetup()
+
+    val writeToFile = (context: TaskContext, iter: Iterator[(K, V)]) => {
+      // Hadoop wants a 32-bit task attempt ID, so if ours is bigger than Int.MaxValue, roll it
+      // around by taking a mod. We expect that no task will be attempted 2 billion times.
+      val attemptNumber = (context.attemptId % Int.MaxValue).toInt
+
+      writer.setup(context.stageId, context.partitionId, attemptNumber)
+      var count = 0
+      while (iter.hasNext) {
+        val record = iter.next()
+        val data = record._2.asInstanceOf[(String, Iterable[String])]
+        try {
+          writer.open(data._1)
+          val rIter = data._2
+          rIter.foreach{
+            m=>writer.write(record._1.asInstanceOf[AnyRef], m)
+          }
+        } finally {
+          writer.close()
+        }
+        count += 1
+      }
+      writer.commit()
+    }
+    self.context.runJob(self, writeToFile)
+    writer.commitJob()
+  }
+
 
   /**
    * Return an RDD with the keys of each tuple.
