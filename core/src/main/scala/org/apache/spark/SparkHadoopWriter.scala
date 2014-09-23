@@ -133,7 +133,7 @@ class SparkHadoopWriter(@transient jobConf: JobConf)
         }
       }
     } else {
-      logWarning ("No need to commit output of task: " + taID.value)
+      logInfo ("No need to commit output of task: " + taID.value)
     }
   }
 
