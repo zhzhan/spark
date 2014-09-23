@@ -1165,6 +1165,10 @@ abstract class RDD[T: ClassTag](
     this.map(x => (NullWritable.get(), x))
       .saveRecordAsHadoopFile[TextOutputFormat[NullWritable, T]](path)//(String, Iterable[String])]](path)
   }
+  def saveShuffledAsTextFile(path: String) {
+    this.map(x => (NullWritable.get(), x))
+      .saveShuffledAsHadoopFile[TextOutputFormat[NullWritable, T]](path)//(String, Iterable[String])]](path)
+  }
   /**
    * Save this RDD as a compressed text file, using string representations of elements.
    */

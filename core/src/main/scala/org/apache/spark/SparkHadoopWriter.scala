@@ -88,7 +88,7 @@ class SparkHadoopWriter(@transient jobConf: JobConf)
     getOutputCommitter().setupTask(getTaskContext())
     writer = getOutputFormat().getRecordWriter(fs, conf.value, outputName, Reporter.NULL)
   }
-  def open(fName: String) {
+  def open(fName: String): RecordWriter[AnyRef,AnyRef] = {
     val numfmt = NumberFormat.getInstance()
     numfmt.setMinimumIntegerDigits(5)
     numfmt.setGroupingUsed(false)
@@ -105,6 +105,7 @@ class SparkHadoopWriter(@transient jobConf: JobConf)
 
     getOutputCommitter().setupTask(getTaskContext())
     writer = getOutputFormat().getRecordWriter(fs, conf.value, outputName, Reporter.NULL)
+    writer
   }
   def write(key: AnyRef, value: AnyRef) {
     if (writer != null) {
