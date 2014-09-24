@@ -4,10 +4,39 @@ import java.io.IOException
 import java.text.{NumberFormat, SimpleDateFormat}
 import java.util.Date
 
+import org.apache.hadoop.fs.FileSystem
+import org.apache.hadoop.fs.Path
 import org.apache.hadoop.fs.{Path, FileSystem}
+import org.apache.hadoop.io.NullWritable
+import org.apache.hadoop.io.SequenceFile.CompressionType
+import org.apache.hadoop.io.compress.CompressionCodec
+import org.apache.hadoop.mapred.FileOutputCommitter
+import org.apache.hadoop.mapred.FileOutputFormat
+import org.apache.hadoop.mapred.JobConf
+import org.apache.hadoop.mapred.JobContext
+import org.apache.hadoop.mapred.JobID
+import org.apache.hadoop.mapred.OutputCommitter
+import org.apache.hadoop.mapred.OutputFormat
+import org.apache.hadoop.mapred.RecordWriter
+import org.apache.hadoop.mapred.Reporter
+import org.apache.hadoop.mapred.SparkHadoopMapRedUtil
+import org.apache.hadoop.mapred.TaskAttemptContext
+import org.apache.hadoop.mapred.TaskAttemptID
+import org.apache.hadoop.mapred.TaskID
+import org.apache.hadoop.mapred.TextOutputFormat
+import org.apache.spark.HashPartitioner
+import org.apache.spark.Logging
+import org.apache.spark.SerializableWritable
+import org.apache.spark.SparkConf
+import org.apache.spark.SparkContext
+import org.apache.spark.SparkException
+import org.apache.spark.TaskContext
 import org.apache.spark._
 import org.apache.spark.SparkContext._
 import org.apache.hadoop.io.NullWritable
+import org.apache.spark.deploy.SparkHadoopUtil
+import org.apache.spark.rdd.HadoopRDD
+import org.apache.spark.rdd.RDD
 import org.apache.spark.rdd.{HadoopRDD, RDD}
 import org.apache.hadoop.mapred._
 import org.apache.spark.deploy.SparkHadoopUtil
@@ -26,14 +55,14 @@ import scala.collection.JavaConversions._
 
 
 
-object ShuffledPartition {
+object UserPartition {
   def saveShuffledAsHadoopFile(rdd: RDD[_],
-                                path: String,
-                                keyClass: Class[_],
-                                valueClass: Class[_],
-                                outputFormatClass: Class[_ <: OutputFormat[_, _]],
-                                conf: JobConf,
-                                codec: Option[Class[_ <: CompressionCodec]] = None) {
+                               path: String,
+                               keyClass: Class[_],
+                               valueClass: Class[_],
+                               outputFormatClass: Class[_ <: OutputFormat[_, _]],
+                               conf: JobConf,
+                               codec: Option[Class[_ <: CompressionCodec]] = None) {
     // Rename this as hadoopConf internally to avoid shadowing (see SPARK-2038).
     val hadoopConf = conf
     hadoopConf.setOutputKeyClass(keyClass)
@@ -51,7 +80,7 @@ object ShuffledPartition {
     }
     hadoopConf.setOutputCommitter(classOf[FileOutputCommitter])
     FileOutputFormat.setOutputPath(hadoopConf,
-      ShuffleHadoopWriter.createPathFromString(path, hadoopConf))
+      UserHadoopWriter.createPathFromString(path, hadoopConf))
     saveShuffledAsHadoopDataset(rdd, hadoopConf)
   }
 
@@ -78,7 +107,7 @@ object ShuffledPartition {
       hadoopConf.getOutputFormat.checkOutputSpecs(ignoredFs, hadoopConf)
     }
 
-    val writer = new ShuffleHadoopWriter(hadoopConf)
+    val writer = new UserHadoopWriter(hadoopConf)
     writer.preSetup()
 
     val writeToFile = (context: TaskContext, iter: Iterator[_]) => {
@@ -122,15 +151,15 @@ object ShuffledPartition {
       new JobConf(spark.hadoopConfiguration))
 
 
-  //  saveShuffledAsTextFile(args(1))
-   // spark.runJob()
+    //  saveShuffledAsTextFile(args(1))
+    // spark.runJob()
     spark.stop()
 
   }
 }
 
 
-class ShuffleHadoopWriter(@transient jobConf: JobConf)
+class UserHadoopWriter(@transient jobConf: JobConf)
   extends Logging
   with SparkHadoopMapRedUtil
   with Serializable {
@@ -275,13 +304,13 @@ class ShuffleHadoopWriter(@transient jobConf: JobConf)
     splitID = splitid
     attemptID = attemptid
 
-    jID = new SerializableWritable[JobID](ShuffleHadoopWriter.createJobID(now, jobid))
+    jID = new SerializableWritable[JobID](UserHadoopWriter.createJobID(now, jobid))
     taID = new SerializableWritable[TaskAttemptID](
       new TaskAttemptID(new TaskID(jID.value, true, splitID), attemptID))
   }
 }
 
-object ShuffleHadoopWriter {
+object UserHadoopWriter {
   def createJobID(time: Date, id: Int): JobID = {
     val formatter = new SimpleDateFormat("yyyyMMddHHmm")
     val jobtrackerID = formatter.format(time)
