@@ -74,6 +74,18 @@ case class InsertIntoOrcTable(
         .asInstanceOf[StructObjectInspector]
       val fieldOIs = standardOI
         .getAllStructFieldRefs.map(_.getFieldObjectInspector).toArray
+
+      val wrappers = fieldOIs.map(HadoopTypeConverter.wrapperFor)
+      val outputData = new Array[Any](fieldOIs.length)
+      iter.map { row =>
+        var i = 0
+        while (i < row.length) {
+          outputData(i) = wrappers(i)(row(i))
+          i += 1
+        }
+        serializer.serialize(outputData, standardOI)
+      }
+      /*
       val outputData = new Array[Any](fieldOIs.length)
       iter.map { row =>
         var i = 0
@@ -82,7 +94,7 @@ case class InsertIntoOrcTable(
           i += 1
         }
         serializer.serialize(outputData, standardOI)
-      }
+      }*/
     }
 
     val job = new NewAPIHadoopJob(sqlContext

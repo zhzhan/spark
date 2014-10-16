@@ -33,6 +33,42 @@ private[hive] object HadoopTypeConverter extends HiveInspectors {
     }
   }
 
+  /**
+   * Wraps with Hive types based on object inspector.
+   * TODO: Consolidate all hive OI/data interface code.
+   */
+  def wrapperFor(oi: ObjectInspector): Any => Any = oi match {
+    case _: JavaHiveVarcharObjectInspector =>
+      (o: Any) => new HiveVarchar(o.asInstanceOf[String], o.asInstanceOf[String].size)
+
+    case _: JavaHiveDecimalObjectInspector =>
+      (o: Any) => new HiveDecimal(o.asInstanceOf[BigDecimal].underlying())
+
+    case soi: StandardStructObjectInspector =>
+      val wrappers = soi.getAllStructFieldRefs.map(ref => wrapperFor(ref.getFieldObjectInspector))
+      (o: Any) => {
+        val struct = soi.create()
+        (soi.getAllStructFieldRefs, wrappers, o.asInstanceOf[Row]).zipped.foreach {
+          (field, wrapper, data) => soi.setStructFieldData(struct, field, wrapper(data))
+        }
+        struct
+      }
+
+    case loi: ListObjectInspector =>
+      val wrapper = wrapperFor(loi.getListElementObjectInspector)
+      (o: Any) => seqAsJavaList(o.asInstanceOf[Seq[_]].map(wrapper))
+
+    case moi: MapObjectInspector =>
+      val keyWrapper = wrapperFor(moi.getMapKeyObjectInspector)
+      val valueWrapper = wrapperFor(moi.getMapValueObjectInspector)
+      (o: Any) => mapAsJavaMap(o.asInstanceOf[Map[_, _]].map { case (key, value) =>
+        keyWrapper(key) -> valueWrapper(value)
+      })
+
+    case _ =>
+      identity[Any]
+  }
+
   def wrap(a: (Any, ObjectInspector)): Any = a match {
     case (s: String, oi: JavaHiveVarcharObjectInspector) =>
       new HiveVarchar(s, s.size)
