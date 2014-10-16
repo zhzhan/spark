@@ -30,6 +30,7 @@ import org.apache.spark.sql.hive
 import org.apache.spark.sql.hive.execution._
 import org.apache.spark.sql.parquet.ParquetRelation
 import org.apache.spark.sql.{SQLContext, SchemaRDD}
+import org.apache.spark.sql.hive.orc._
 
 import scala.collection.JavaConversions._
 
@@ -219,6 +220,41 @@ private[hive] trait HiveStrategies {
         }
 
       case _ => Nil
+    }
+  }
+
+  //TODO: predict push down
+  object OrcOperations extends Strategy {
+    def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
+      case WriteToOrcFile(path, child) =>
+        val relation =
+          OrcRelation.create(path, child, sparkContext.hadoopConfiguration, sqlContext)
+        // Note: overwrite=false following parquet convention, although we don't have
+        // this limitation
+        InsertIntoOrcTable(relation, planLater(child), overwrite = false) :: Nil
+      case logical.InsertIntoTable(table: OrcRelation, partition, child, overwrite) =>
+        InsertIntoOrcTable(table, planLater(child), overwrite) :: Nil
+      case PhysicalOperation(projectList, filters, relation: OrcRelation) =>
+        val prunePushedDownFilters = {
+          if (ORC_FILTER_PUSHDOWN_ENABLED) {
+            //either all or non success or fail
+            (filters: Seq[Expression]) => {
+              val recordFilter = OrcFilters.createFilter(filters)
+              if (recordFilter.isDefined) {
+                sparkContext.hadoopConfiguration.set(SARG_PUSHDOWN, toKryo(recordFilter.get))
+              }
+            }
+          }
+          //no matter whether it is filtered or not in orc, we need to do more fine grained filter
+          // in the upper layer, return all of them
+          identity[Seq[Expression]] _
+        }
+        pruneFilterProject(
+          projectList,
+          filters,
+          prunePushedDownFilters,
+          OrcTableScan(_, relation, None)) :: Nil
+      case x => Nil
     }
   }
 }
