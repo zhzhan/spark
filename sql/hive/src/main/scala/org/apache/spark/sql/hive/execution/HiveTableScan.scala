@@ -23,7 +23,6 @@ import org.apache.hadoop.hive.common.`type`.{HiveDecimal, HiveVarchar}
 import org.apache.hadoop.hive.conf.HiveConf
 import org.apache.hadoop.hive.ql.metadata.{Partition => HivePartition}
 import org.apache.hadoop.hive.serde.serdeConstants
-import org.apache.hadoop.hive.serde2.ColumnProjectionUtils
 import org.apache.hadoop.hive.serde2.objectinspector._
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils.ObjectInspectorCopyOption
 import org.apache.hadoop.hive.serde2.objectinspector.primitive._
@@ -77,8 +76,7 @@ case class HiveTableScan(
       attributes.map(a =>
         relation.attributes.indexWhere(_.name == a.name): Integer).filter(index => index >= 0)
 
-    ColumnProjectionUtils.appendReadColumnIDs(hiveConf, neededColumnIDs)
-    ColumnProjectionUtils.appendReadColumnNames(hiveConf, attributes.map(_.name))
+    HiveShim.appendReadColumns(hiveConf, neededColumnIDs, attributes.map(_.name))
 
     // Specifies types and object inspectors of columns to be scanned.
     val structOI = ObjectInspectorUtils

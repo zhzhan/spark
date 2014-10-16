@@ -123,7 +123,8 @@ private[hive] case class HiveGenericUdf(functionClassName: String, children: Seq
   type UDFType = GenericUDF
 
   @transient
-  protected lazy val argumentInspectors = children.map(_.dataType).map(toInspector)
+  protected lazy val argumentInspectors =
+    HiveShim.getArgumentInspectors(functionClassName, children, toInspector _)
 
   @transient
   protected lazy val returnInspector = function.initialize(argumentInspectors.toArray)

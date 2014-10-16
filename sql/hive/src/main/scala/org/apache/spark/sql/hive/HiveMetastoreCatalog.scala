@@ -23,7 +23,6 @@ import org.apache.hadoop.hive.metastore.api.{FieldSchema, StorageDescriptor, Ser
 import org.apache.hadoop.hive.metastore.api.{Table => TTable, Partition => TPartition}
 import org.apache.hadoop.hive.ql.metadata.{Hive, Partition, Table}
 import org.apache.hadoop.hive.ql.plan.TableDesc
-import org.apache.hadoop.hive.ql.stats.StatsSetupConst
 import org.apache.hadoop.hive.serde2.Deserializer
 
 import org.apache.spark.annotation.DeveloperApi
@@ -37,6 +36,7 @@ import org.apache.spark.sql.catalyst.rules._
 import org.apache.spark.sql.catalyst.types._
 import org.apache.spark.sql.columnar.InMemoryRelation
 import org.apache.spark.sql.hive.execution.HiveTableScan
+import org.apache.spark.sql.hive.HiveShim
 import org.apache.spark.util.Utils
 
 /* Implicit conversions */
@@ -59,7 +59,7 @@ private[hive] class HiveMetastoreCatalog(hive: HiveContext) extends Catalog with
     val table = client.getTable(databaseName, tblName)
     val partitions: Seq[Partition] =
       if (table.isPartitioned) {
-        client.getAllPartitionsForPruner(table).toSeq
+        HiveShim.getAllPartitionsOf(client, table).toSeq
       } else {
         Nil
       }
@@ -190,7 +190,7 @@ object HiveMetastoreTypes extends RegexParsers {
     "bigint" ^^^ LongType |
     "binary" ^^^ BinaryType |
     "boolean" ^^^ BooleanType |
-    "decimal" ^^^ DecimalType |
+    HiveShim.metastoreDecimal ^^^ DecimalType |
     "timestamp" ^^^ TimestampType |
     "varchar\\((\\d+)\\)".r ^^^ StringType
 
@@ -275,13 +275,13 @@ private[hive] case class MetastoreRelation
       // of RPCs are involved.  Besides `totalSize`, there are also `numFiles`, `numRows`,
       // `rawDataSize` keys (see StatsSetupConst in Hive) that we can look at in the future.
       BigInt(
-        Option(hiveQlTable.getParameters.get(StatsSetupConst.TOTAL_SIZE))
+        Option(hiveQlTable.getParameters.get(HiveShim.getStatsSetupConstTotalSize))
           .map(_.toLong)
           .getOrElse(sqlContext.defaultSizeInBytes))
     }
   )
 
-  val tableDesc = new TableDesc(
+  val tableDesc = HiveShim.getTableDesc(
     Class.forName(
       hiveQlTable.getSerializationLib,
       true,
