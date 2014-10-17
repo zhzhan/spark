@@ -204,7 +204,7 @@
         </dependency>
       </dependencies>
     </profile>
-    <profile>
+    <!--<profile>
       <id>hive-versions</id>
       <activation>
         <property>
@@ -218,7 +218,7 @@
           <version>${project.version}</version>
         </dependency>
       </dependencies>
-    </profile>
+    </profile>-->
     <profile>
       <id>spark-ganglia-lgpl</id>
       <dependencies>
