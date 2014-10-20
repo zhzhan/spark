@@ -95,6 +95,7 @@
     <module>sql/catalyst</module>
     <module>sql/core</module>
     <module>sql/hive</module>
+    <module>sql/hive-thriftserver</module>
     <module>repl</module>
     <module>assembly</module>
     <module>external/twitter</module>
@@ -1283,15 +1284,6 @@
         <hive.version.short>0.12.0</hive.version.short>
         <derby.version>10.4.2.0</derby.version>
       </properties>
-    </profile>
-    <profile>
-      <id>hive</id>
-      <activation>
-        <activeByDefault>false</activeByDefault>
-      </activation>
-      <modules>
-        <module>sql/hive-thriftserver</module>
-      </modules>
     </profile>
     <profile>
       <id>hive-versions</id>
