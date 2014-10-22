@@ -75,36 +75,36 @@ private[sql]  object OrcFilters extends Logging {
         val b1 = builder.equals(left.name, right.value)
         Some(b1)
       }
-      case p@LessThan(left: Literal, right: NamedExpression) => {
-        val b1 = builder.lessThan(right.name, left.value.asInstanceOf[Int])
-        Some(b1)
-      }
       case p@LessThan(left: NamedExpression, right: Literal) => {
-        val b1 = builder.lessThan(left.name, right.value.asInstanceOf[Int])
+        val b1 = builder.lessThan(left.name, right.value)
         Some(b1)
       }
-      case p@LessThanOrEqual(left: Literal, right: NamedExpression) =>{
-        val b1 = builder.lessThanEquals(right.name, left.value)
+      case p@LessThan(left: Literal, right: NamedExpression) => {
+        val b1 = builder.startNot().lessThanEquals(right.name, left.value).end()
         Some(b1)
       }
       case p@LessThanOrEqual(left: NamedExpression, right: Literal) =>{
         val b1 = builder.lessThanEquals(left.name, right.value)
         Some(b1)
       }
-      case p@GreaterThan(left: Literal, right: NamedExpression) => {
-        val b1 = builder.startNot().lessThanEquals(right.name, left.value).end()
+      case p@LessThanOrEqual(left: Literal, right: NamedExpression) =>{
+        val b1 = builder.startNot().lessThan(right.name, left.value).end()
         Some(b1)
       }
       case p@GreaterThan(left: NamedExpression, right: Literal) => {
         val b1 = builder.startNot().lessThanEquals(left.name, right.value).end()
         Some(b1)
       }
-      case p@GreaterThanOrEqual(left: Literal, right: NamedExpression) => {
-        val b1 = builder.startNot().lessThan(right.name, left.value).end()
+      case p@GreaterThan(left: Literal, right: NamedExpression) => {
+        val b1 = builder.lessThanEquals(right.name, left.value)
         Some(b1)
       }
       case p@GreaterThanOrEqual(left: NamedExpression, right: Literal) => {
         val b1 = builder.startNot().lessThan(left.name, right.value).end()
+        Some(b1)
+      }
+      case p@GreaterThanOrEqual(left: Literal, right: NamedExpression) => {
+        val b1 = builder.lessThan(right.name, left.value)
         Some(b1)
       }
       //more investigation
