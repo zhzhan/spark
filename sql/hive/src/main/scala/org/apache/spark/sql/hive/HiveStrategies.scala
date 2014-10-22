@@ -237,11 +237,10 @@ private[hive] trait HiveStrategies {
         InsertIntoOrcTable(table, planLater(child), overwrite) :: Nil
       case PhysicalOperation(projectList, filters, relation: OrcRelation) =>
         val prunePushedDownFilters = {
-       //   sparkContext.hadoopConfiguration.setBoolean("hive.optimize.index.filter", false)
-       //   sparkContext.hadoopConfiguration.setBoolean("hive.optimize.ppd", false)
           if (ORC_FILTER_PUSHDOWN_ENABLED) {
             logInfo("Orc push down filter enabled:" + filters)
-            //either all or non success or fail
+            // We allow partial pushdown on the top level
+
             (filters: Seq[Expression]) => {
               val recordFilter = OrcFilters.createFilter(filters)
               if (recordFilter.isDefined) {

@@ -168,9 +168,12 @@ case class OrcTableScan(
       output.map(a =>
         relation.output.indexWhere(_.name == a.name): Integer)
         .filter(index => index >= 0)
-
     // Use HiveShim to support hive-0.13.1 after spark-2706 going to upstream
-    HiveShim.appendReadColumns(conf, ids, attributes.map(_.name))
+    if (ORC_FILTER_PUSHDOWN_ENABLED) {
+      HiveShim.appendReadColumns(conf, ids, attributes.map(_.name))
+    } else {
+      HiveShim.appendReadColumns(conf, ids, null)
+    }
     /*
     if (ids != null && ids.size > 0) {
       ColumnProjectionUtils.appendReadColumnIDs(conf, ids)

@@ -22,20 +22,35 @@ import org.apache.hadoop.hive.ql.io.sarg.SearchArgument
 import org.apache.hadoop.hive.ql.io.sarg.SearchArgument.Builder
 import org.apache.spark.Logging
 
-private[sql]  object OrcFilters extends Logging {
+private[sql] object OrcFilters extends Logging {
 
-  def createFilter(expr: Seq[Expression]): Option[SearchArgument]  = {
+  def createFilter(expr: Seq[Expression]): Option[SearchArgument] = {
+    var exist = false
     if (expr == null || expr.size == 0) return None
     var sarg: Option[Builder] = Some(SearchArgument.FACTORY.newBuilder())
     sarg.get.startAnd()
-    expr.foreach{x => {
-      sarg match {
-        case Some(s) => sarg = createFilter(x, s)
+    expr.foreach {
+      x => {
+        sarg match {
+          case Some(s1) => {
+            val s2 = createFilter(x, s1)
+            s2 match {
+              case Some(s3) => exist = true
+                sarg = s2
+              case _ => None
+            }
+          }
+          case _ => None
+        }
       }
-    }}
-    sarg match {
-      case Some(b) => Some(b.end.build)
-      case _ => None
+    }
+    if (exist) {
+      sarg match {
+        case Some(b) => Some(b.end.build)
+        case _ => None
+      }
+    } else {
+      None
     }
   }
 
@@ -83,11 +98,11 @@ private[sql]  object OrcFilters extends Logging {
         val b1 = builder.startNot().lessThanEquals(right.name, left.value).end()
         Some(b1)
       }
-      case p@LessThanOrEqual(left: NamedExpression, right: Literal) =>{
+      case p@LessThanOrEqual(left: NamedExpression, right: Literal) => {
         val b1 = builder.lessThanEquals(left.name, right.value)
         Some(b1)
       }
-      case p@LessThanOrEqual(left: Literal, right: NamedExpression) =>{
+      case p@LessThanOrEqual(left: Literal, right: NamedExpression) => {
         val b1 = builder.startNot().lessThan(right.name, left.value).end()
         Some(b1)
       }

@@ -59,7 +59,7 @@ package object orc {
   var ORC_FILTER_PUSHDOWN_ENABLED = true
   val SARG_PUSHDOWN = "sarg.pushdown";
 
-  def toKryo(input: SearchArgument) = {
+  def toKryo(input: Any) = {
     val out = new Output(4 * 1024, 10 * 1024 * 1024);
     new Kryo().writeObject(out, input);
     out.close();
