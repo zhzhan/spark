@@ -35,6 +35,10 @@ private[orc] object OrcFileOperator extends Logging{
 
   var conf: Configuration = _
 
+  def getFileReader(pathStr: String): Reader = {
+    var conf = Some(new Configuration)
+    getFileReader(pathStr, conf)  }
+
   def getFileReader(pathStr: String, config: Option[Configuration] ): Reader = {
     var conf = config
     if (conf == null) {

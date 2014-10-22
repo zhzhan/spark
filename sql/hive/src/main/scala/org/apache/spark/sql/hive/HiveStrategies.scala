@@ -247,14 +247,18 @@ private[hive] trait HiveStrategies {
                 logInfo("Parsed filters:" + recordFilter)
 
                 /**
-                 * To test it, we can set follows so that the reader will not read whole file if small
-                 * sparkContext.hadoopConfiguration.setInt("mapreduce.input.fileinputformat.split.maxsize", 50)
+                 * To test it, we can set follows so that the reader w
+                 * ill not read whole file if small
+                 * sparkContext.hadoopConfiguration.setInt(
+                 * "mapreduce.input.fileinputformat.split.maxsize", 50)
                  */
                 sparkContext.hadoopConfiguration.set(SARG_PUSHDOWN, toKryo(recordFilter.get))
                 sparkContext.hadoopConfiguration.setBoolean("hive.optimize.index.filter", true)
-                sparkContext.hadoopConfiguration.setInt("mapreduce.input.fileinputformat.split.maxsize", 50)
+                sparkContext.hadoopConfiguration
+                  .setInt("mapreduce.input.fileinputformat.split.maxsize", 50)
               }
-              //no matter whether it is filtered or not in orc, we need to do more fine grained filter
+              //no matter whether it is filtered or not in orc,
+              // we need to do more fine grained filter
               // in the upper layer, return all of them
               filters
             }
