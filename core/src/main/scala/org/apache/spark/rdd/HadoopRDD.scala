@@ -197,7 +197,11 @@ class HadoopRDD[K, V](
       val inputFormat = getInputFormat(jobConf)
       HadoopRDD.addLocalConfiguration(new SimpleDateFormat("yyyyMMddHHmm").format(createTime),
         context.stageId, theSplit.index, context.attemptId.toInt, jobConf)
+      val columns = jobConf.get("hive.io.file.readcolumn.names")
+      val sargs = jobConf.get("sarg.pushdown")
+      logInfo("sargs: " + sargs + " columns " + columns)
       reader = inputFormat.getRecordReader(split.inputSplit.value, jobConf, Reporter.NULL)
+
 
       // Register an on-task-completion callback to close the input stream.
       context.addTaskCompletionListener{ context => closeIfNeeded() }
