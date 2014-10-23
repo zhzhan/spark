@@ -40,6 +40,7 @@ import org.apache.spark.sql.catalyst.plans.logical.{UnaryNode => LogicalUnaryNod
 import org.apache.spark.sql.catalyst.types.StructType
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.execution.{LeafNode, UnaryNode, SparkPlan}
+import org.apache.spark.sql.hive.orc._
 import org.apache.spark.sql.hive.{HadoopTypeConverter, HiveMetastoreTypes}
 import org.apache.spark.{TaskContext, SerializableWritable}
 import scala.collection.JavaConversions._
@@ -168,12 +169,16 @@ case class OrcTableScan(
       output.map(a =>
         relation.output.indexWhere(_.name == a.name): Integer)
         .filter(index => index >= 0)
+    val names = attributes.map(_.name)
+    val sorted = ids.zip(names).sorted
+  //  val sortedNames = ids.zip(names).sorted.map(_.2)
     // Use HiveShim to support hive-0.13.1 after spark-2706 going to upstream
-    if (ORC_FILTER_PUSHDOWN_ENABLED) {
-      HiveShim.appendReadColumns(conf, ids, attributes.map(_.name))
+    if (ORC_FILTER_PUSHDOWN_ENABLED && ORC_PUSHDOWN) {
+      HiveShim.appendReadColumns(conf, sorted.map(_._1), sorted.map(_._2))
     } else {
-      HiveShim.appendReadColumns(conf, ids, null)
+      HiveShim.appendReadColumns(conf, sorted.map(_._1), null)
     }
+    ORC_PUSHDOWN = false
     /*
     if (ids != null && ids.size > 0) {
       ColumnProjectionUtils.appendReadColumnIDs(conf, ids)
@@ -227,16 +232,19 @@ case class OrcTableScan(
     val job = new Job(sc.hadoopConfiguration)
     val conf: Configuration = job.getConfiguration
     val fileList = OrcFileOperator.listOrcFiles(relation.path, conf)
-
+    addColumnIds(output, relation, conf)
     for (path <- fileList if !path.getName.startsWith("_")) {
       FileInputFormat.addInputPath(job, path)
     }
-    addColumnIds(output, relation, conf)
+
     val inputClass = classOf[OrcInputFormat].asInstanceOf[
       Class[_ <: org.apache.hadoop.mapred.InputFormat[NullWritable, Writable]]]
 
     val rdd = sc.hadoopRDD(conf.asInstanceOf[JobConf],
       inputClass, classOf[NullWritable], classOf[Writable]).map(_._2)
+    // orc optimize too much even the getPartition part, in multiple query, only the
+    // partition not trimmed is visible in the first query
+
     val mutableRow = new SpecificMutableRow(attributes.map(_.dataType))
     val wrappedConf = new SerializableWritable(conf)
     val rowRdd: RDD[Row] = rdd.mapPartitions { iter =>

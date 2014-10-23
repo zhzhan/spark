@@ -57,6 +57,7 @@ package object orc {
   val orcDefaultCompressVar = "hive.exec.orc.default.compress"
   // for prediction push down in hive-0.13.1, don't enable it
   var ORC_FILTER_PUSHDOWN_ENABLED = true
+  var ORC_PUSHDOWN = false
   val SARG_PUSHDOWN = "sarg.pushdown";
 
   def toKryo(input: Any) = {

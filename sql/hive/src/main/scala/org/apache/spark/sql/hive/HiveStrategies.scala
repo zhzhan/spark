@@ -245,7 +245,7 @@ private[hive] trait HiveStrategies {
               val recordFilter = OrcFilters.createFilter(filters)
               if (recordFilter.isDefined) {
                 logInfo("Parsed filters:" + recordFilter)
-
+                ORC_PUSHDOWN = true
                 /**
                  * To test it, we can set follows so that the reader w
                  * ill not read whole file if small
