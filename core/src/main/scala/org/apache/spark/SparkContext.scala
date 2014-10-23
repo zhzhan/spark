@@ -1501,6 +1501,36 @@ object SparkContext extends Logging {
     res
   }
 
+  private def startATSService(sc: SparkContext) = {
+    logInfo("Starting ATS service ... in " + this)
+    try {
+      val cname = "org.apache.spark.yarn.timeline.ATSHistoryLoggingService"
+      val clazz = Class.forName(cname)
+      logDebug("class: " + clazz)
+      val cons = clazz.getConstructor(classOf[SparkContext])
+      logDebug("construct: " + cons)
+      val ins = cons.newInstance(sc).asInstanceOf[{def startATS():Boolean}]
+      logDebug("instance: " + ins)
+      val ret = ins.startATS()
+      logInfo("ATS service started (" + ret + ")")
+     /* val ins = cons.newInstance(sc)
+      logDebug("instance: " + ins)
+      val methods = clazz.getMethods
+      methods.foreach(m => logInfo("methods : " + m))
+      val startMethod = ins.getClass.getMethod("startATS", null)
+
+      logDebug("method: " + startMethod.toString)
+      startMethod.invoke(ins, null)*/
+    } catch {
+      // TODO: Enumerate the exact reasons why it can fail
+      // But irrespective of it, it means we cannot proceed !
+      case e: Exception => {
+        throw new SparkException("YARN ATS service not available ?", e)
+      }
+    }
+
+  }
+
   /** Creates a task scheduler based on a given master URL. Extracted for testing. */
   private def createTaskScheduler(sc: SparkContext, master: String): TaskScheduler = {
     // Regular expression used for local[N] and local[*] master formats
@@ -1577,6 +1607,10 @@ object SparkContext extends Logging {
           logWarning(
             "\"yarn-standalone\" is deprecated as of Spark 1.0. Use \"yarn-cluster\" instead.")
         }
+
+        /*start the ATS service here*/
+        startATSService(sc)
+
         val scheduler = try {
           val clazz = Class.forName("org.apache.spark.scheduler.cluster.YarnClusterScheduler")
           val cons = clazz.getConstructor(classOf[SparkContext])
@@ -1602,6 +1636,9 @@ object SparkContext extends Logging {
         scheduler
 
       case "yarn-client" =>
+
+        /*start the ATS service here*/
+        startATSService(sc)
         val scheduler = try {
           val clazz =
             Class.forName("org.apache.spark.scheduler.cluster.YarnClientClusterScheduler")
