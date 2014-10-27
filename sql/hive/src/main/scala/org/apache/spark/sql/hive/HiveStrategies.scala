@@ -17,6 +17,8 @@
 
 package org.apache.spark.sql.hive
 
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.mapreduce.Job
 import org.apache.spark.annotation.Experimental
 import org.apache.spark.Logging
 import org.apache.spark.sql.catalyst.analysis.UnresolvedAttribute
@@ -237,25 +239,29 @@ private[hive] trait HiveStrategies {
         InsertIntoOrcTable(table, planLater(child), overwrite) :: Nil
       case PhysicalOperation(projectList, filters, relation: OrcRelation) =>
         val prunePushedDownFilters = {
+          OrcRelation.jobConf =  sparkContext.hadoopConfiguration
           if (ORC_FILTER_PUSHDOWN_ENABLED) {
+            val job = new Job(OrcRelation.jobConf)//sc.hadoopConfiguration)
+            val conf: Configuration = job.getConfiguration
             logInfo("Orc push down filter enabled:" + filters)
             // We allow partial pushdown on the top level
 
             (filters: Seq[Expression]) => {
               val recordFilter = OrcFilters.createFilter(filters)
               if (recordFilter.isDefined) {
+
                 logInfo("Parsed filters:" + recordFilter)
-                ORC_PUSHDOWN = true
+                //ORC_PUSHDOWN = true
                 /**
                  * To test it, we can set follows so that the reader w
                  * ill not read whole file if small
                  * sparkContext.hadoopConfiguration.setInt(
                  * "mapreduce.input.fileinputformat.split.maxsize", 50)
                  */
-                sparkContext.hadoopConfiguration.set(SARG_PUSHDOWN, toKryo(recordFilter.get))
-                sparkContext.hadoopConfiguration.setBoolean("hive.optimize.index.filter", true)
-                sparkContext.hadoopConfiguration
-                  .setInt("mapreduce.input.fileinputformat.split.maxsize", 50)
+                conf.set(SARG_PUSHDOWN, toKryo(recordFilter.get))
+                conf.setBoolean("hive.optimize.index.filter", true)
+                conf.setInt("mapreduce.input.fileinputformat.split.maxsize", 50)
+                OrcRelation.jobConf = conf
               }
               //no matter whether it is filtered or not in orc,
               // we need to do more fine grained filter

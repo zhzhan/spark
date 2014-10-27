@@ -46,7 +46,6 @@ import org.apache.spark.sql.execution.ExtractPythonUdfs
 import org.apache.spark.sql.execution.QueryExecutionException
 import org.apache.spark.sql.execution.{Command => PhysicalCommand}
 import org.apache.spark.sql.hive.execution.DescribeHiveTableCommand
-import org.apache.spark.sql.hive.HiveShim
 
 /**
  * DEPRECATED: Use HiveContext instead.
@@ -230,14 +229,18 @@ class HiveContext(sc: SparkContext) extends SQLContext(sc) {
    * set() or a SET command inside sql() will be set in the SQLConf *as well as*
    * in the HiveConf.
    */
-  @transient protected[hive] lazy val hiveconf = new HiveConf(classOf[SessionState])
-  @transient protected[hive] lazy val sessionState = {
-    val ss = new SessionState(hiveconf)
-    setConf(hiveconf.getAllProperties)  // Have SQLConf pick up the initial set of HiveConf.
-    SessionState.start(ss)
-    ss.err = new PrintStream(outputBuffer, true, "UTF-8")
-    ss.out = new PrintStream(outputBuffer, true, "UTF-8")
+  @transient lazy val hiveconf = new HiveConf(classOf[SessionState])
 
+  def getSessionState() = {
+    var ss = SessionState.get
+    // If the thread local sessionstate is not set, start one
+    if (ss == null) {
+      ss = new SessionState(hiveconf)
+      setConf(hiveconf.getAllProperties) // Have SQLConf pick up the initial set of HiveConf.
+      SessionState.start(ss)
+      ss.err = new PrintStream(outputBuffer, true, "UTF-8")
+      ss.out = new PrintStream(outputBuffer, true, "UTF-8")
+    }
     ss
   }
 
@@ -283,6 +286,7 @@ class HiveContext(sc: SparkContext) extends SQLContext(sc) {
    * in the sequence is one row.
    */
   protected def runHive(cmd: String, maxRows: Int = 1000): Seq[String] = {
+    val ss = getSessionState
     try {
       val cmd_trimmed: String = cmd.trim()
       val tokens: Array[String] = cmd_trimmed.split("\\s+")
@@ -303,7 +307,7 @@ class HiveContext(sc: SparkContext) extends SQLContext(sc) {
           driver.close()
           HiveShim.processResults(results)
         case _ =>
-          sessionState.out.println(tokens(0) + " " + cmd_1)
+          ss.out.println(tokens(0) + " " + cmd_1)
           Seq(proc.run(cmd_1).getResponseCode.toString)
       }
     } catch {

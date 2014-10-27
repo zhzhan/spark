@@ -140,8 +140,6 @@ class OrcQuerySuite extends QueryTest with FunSuiteLike with BeforeAndAfterAll {
   }
 
   test("Simple selection form orc table") {
-    val old = ORC_FILTER_PUSHDOWN_ENABLED
-    ORC_FILTER_PUSHDOWN_ENABLED = false
     val tempDir = getTempFilePath("orcTest").getCanonicalPath
     val data = sparkContext.parallelize((1 to 10))
       .map(i => Person(s"name_$i", i,  (0 until 2).map{ m=>
@@ -158,7 +156,6 @@ class OrcQuerySuite extends QueryTest with FunSuiteLike with BeforeAndAfterAll {
     val contacts = rdd.flatMap(t=>t(1).asInstanceOf[Seq[_]])
     assert(contacts.count() == 10)
     Utils.deleteRecursively(new File(tempDir))
-    ORC_FILTER_PUSHDOWN_ENABLED = old
   }
 
   test("save and load case class RDD with Nones as orc") {

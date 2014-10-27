@@ -59,7 +59,7 @@ private[sql] case class OrcRelation(path: String,
   }
 
   // what's this for??
-  override lazy val statistics = Statistics(sizeInBytes = sqlContext.defaultSizeInBytes)
+ // override lazy val statistics = Statistics(sizeInBytes = sqlContext.defaultSizeInBytes)
 }
 
 private[sql] object OrcRelation {
@@ -107,4 +107,5 @@ private[sql] object OrcRelation {
       override def getSchema: Seq[Attribute] = attributes
     }
   }
+  var jobConf: Configuration = _
 }

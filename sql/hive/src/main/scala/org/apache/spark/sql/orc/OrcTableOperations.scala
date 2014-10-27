@@ -171,14 +171,18 @@ case class OrcTableScan(
         .filter(index => index >= 0)
     val names = attributes.map(_.name)
     val sorted = ids.zip(names).sorted
+    HiveShim.appendReadColumns(conf, sorted.map(_._1), sorted.map(_._2))
+
   //  val sortedNames = ids.zip(names).sorted.map(_.2)
     // Use HiveShim to support hive-0.13.1 after spark-2706 going to upstream
+   // HiveShim.appendReadColumns(conf, sorted.map(_._1), sorted.map(_._2))
+    /*
     if (ORC_FILTER_PUSHDOWN_ENABLED && ORC_PUSHDOWN) {
       HiveShim.appendReadColumns(conf, sorted.map(_._1), sorted.map(_._2))
     } else {
       HiveShim.appendReadColumns(conf, sorted.map(_._1), null)
-    }
-    ORC_PUSHDOWN = false
+    }*/
+    //ORC_PUSHDOWN = false
     /*
     if (ids != null && ids.size > 0) {
       ColumnProjectionUtils.appendReadColumnIDs(conf, ids)
@@ -229,7 +233,7 @@ case class OrcTableScan(
   }
   override def execute(): RDD[Row] = {
     val sc = sqlContext.sparkContext
-    val job = new Job(sc.hadoopConfiguration)
+    val job = new Job(OrcRelation.jobConf)//sc.hadoopConfiguration)
     val conf: Configuration = job.getConfiguration
     val fileList = OrcFileOperator.listOrcFiles(relation.path, conf)
     addColumnIds(output, relation, conf)
