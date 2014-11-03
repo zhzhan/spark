@@ -21,6 +21,7 @@ import org.apache.hadoop.yarn.api.records.{ApplicationId, YarnApplicationState}
 import org.apache.spark.{SparkException, Logging, SparkContext}
 import org.apache.spark.deploy.yarn.{Client, ClientArguments}
 import org.apache.spark.scheduler.TaskSchedulerImpl
+import org.apache.spark.deploy.yarn.timeline.ATSHistoryLoggingService
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -59,6 +60,8 @@ private[spark] class YarnClientSchedulerBackend(
     totalExpectedExecutors = args.numExecutors
     client = new Client(args, conf)
     appId = client.submitApplication()
+    val logService = new ATSHistoryLoggingService(sc, appId)
+    logService.startATS
     waitForApplication()
     asyncMonitorApplication()
   }

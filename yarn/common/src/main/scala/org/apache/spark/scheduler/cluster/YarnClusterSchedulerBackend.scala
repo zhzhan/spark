@@ -18,9 +18,10 @@
 package org.apache.spark.scheduler.cluster
 
 import org.apache.spark.SparkContext
-import org.apache.spark.deploy.yarn.ApplicationMasterArguments
+import org.apache.spark.deploy.yarn.{ApplicationMaster,ApplicationMasterArguments}
 import org.apache.spark.scheduler.TaskSchedulerImpl
 import org.apache.spark.util.IntParam
+import org.apache.spark.deploy.yarn.timeline.ATSHistoryLoggingService
 
 private[spark] class YarnClusterSchedulerBackend(
     scheduler: TaskSchedulerImpl,
@@ -35,6 +36,8 @@ private[spark] class YarnClusterSchedulerBackend(
 
   override def start() {
     super.start()
+    val logService = new ATSHistoryLoggingService(sc, ApplicationMaster.getAttempId.getApplicationId())
+    logService.startATS
     totalExpectedExecutors = ApplicationMasterArguments.DEFAULT_NUMBER_EXECUTORS
     if (System.getenv("SPARK_EXECUTOR_INSTANCES") != null) {
       totalExpectedExecutors = IntParam.unapply(System.getenv("SPARK_EXECUTOR_INSTANCES"))

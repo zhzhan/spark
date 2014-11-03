@@ -31,7 +31,6 @@ import org.apache.hadoop.util.ShutdownHookManager
 import org.apache.hadoop.yarn.api._
 import org.apache.hadoop.yarn.api.records._
 import org.apache.hadoop.yarn.conf.YarnConfiguration
-import org.apache.spark.yarn.timeline.ATSHistoryLoggingService
 
 import org.apache.spark.{Logging, SecurityManager, SparkConf, SparkContext, SparkEnv}
 import org.apache.spark.SparkException
@@ -74,6 +73,10 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments,
 
   // Fields used in cluster mode.
   private val sparkContextRef = new AtomicReference[SparkContext](null)
+
+  def getAttempId() = {
+    client.getAttemptId()
+  }
 
   final def run(): Int = {
     try {
@@ -217,8 +220,6 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments,
     addAmIpFilter()
     setupSystemSecurityManager()
     userClassThread = startUserClass()
-    logInfo("start logging service")
-    ATSHistoryLoggingService.startLoggingService(client.getAttemptId().getApplicationId())
 
     // This a bit hacky, but we need to wait until the spark.driver.port property has
     // been set by the Thread executing the user class.
@@ -533,6 +534,9 @@ object ApplicationMaster extends Logging {
     }
   }
 
+  def getAttempId() = {
+    master.getAttempId
+  }
   private[spark] def sparkContextInitialized(sc: SparkContext) = {
     master.sparkContextInitialized(sc)
   }

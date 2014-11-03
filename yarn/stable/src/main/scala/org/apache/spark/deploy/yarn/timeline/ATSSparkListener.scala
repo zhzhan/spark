@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.yarn.timeline
+package org.apache.spark.deploy.yarn.timeline
 
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.scheduler.SchedulingMode.SchedulingMode
