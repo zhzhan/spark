@@ -19,6 +19,7 @@ package org.apache.spark.scheduler.cluster
 
 import org.apache.spark.SparkContext
 import org.apache.spark.deploy.yarn.{ApplicationMaster,ApplicationMasterArguments}
+import org.apache.spark.deploy.yarn.YarnSparkHadoopUtil._
 import org.apache.spark.scheduler.TaskSchedulerImpl
 import org.apache.spark.util.IntParam
 import org.apache.spark.deploy.yarn.timeline.ATSHistoryLoggingService
@@ -26,29 +27,19 @@ import org.apache.spark.deploy.yarn.timeline.ATSHistoryLoggingService
 private[spark] class YarnClusterSchedulerBackend(
     scheduler: TaskSchedulerImpl,
     sc: SparkContext)
-  extends CoarseGrainedSchedulerBackend(scheduler, sc.env.actorSystem) {
-
-  var totalExpectedExecutors = 0
-
-  if (conf.getOption("spark.scheduler.minRegisteredResourcesRatio").isEmpty) {
-    minRegisteredRatio = 0.8
-  }
+  extends YarnSchedulerBackend(scheduler, sc) {
 
   override def start() {
     super.start()
     val logService = new ATSHistoryLoggingService(sc, ApplicationMaster.getAttempId.getApplicationId())
     logService.startATS
-    totalExpectedExecutors = ApplicationMasterArguments.DEFAULT_NUMBER_EXECUTORS
+    totalExpectedExecutors = DEFAULT_NUMBER_EXECUTORS
     if (System.getenv("SPARK_EXECUTOR_INSTANCES") != null) {
       totalExpectedExecutors = IntParam.unapply(System.getenv("SPARK_EXECUTOR_INSTANCES"))
         .getOrElse(totalExpectedExecutors)
     }
     // System property can override environment variable.
     totalExpectedExecutors = sc.getConf.getInt("spark.executor.instances", totalExpectedExecutors)
-  }
-
-  override def sufficientResourcesRegistered(): Boolean = {
-    totalRegisteredExecutors.get() >= totalExpectedExecutors * minRegisteredRatio
   }
 
   override def applicationId(): String =
