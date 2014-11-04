@@ -75,7 +75,7 @@ case class InsertIntoOrcTable(
         .asInstanceOf[StructObjectInspector]
       val fieldOIs = standardOI
         .getAllStructFieldRefs.map(_.getFieldObjectInspector).toArray
-      val wrappers = fieldOIs.map(HadoopTypeConverter.wrapperFor)
+      val wrappers = fieldOIs.map(HadoopTypeConverter.wrappers)
       val outputData = new Array[Any](fieldOIs.length)
       iter.map { row =>
         var i = 0

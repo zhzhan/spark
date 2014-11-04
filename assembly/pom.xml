@@ -146,10 +146,6 @@
                     <exclude>com/google/common/base/Present*</exclude>
                   </excludes>
                 </relocation>
-                <relocation>
-                  <pattern>org.apache.commons.math3</pattern>
-                  <shadedPattern>org.spark-project.commons.math3</shadedPattern>
-                </relocation>
               </relocations>
               <transformers>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer" />
@@ -202,27 +198,12 @@
           <version>${project.version}</version>
         </dependency>
         <dependency>
-              <groupId>org.apache.spark</groupId>
-              <artifactId>spark-hive-thriftserver_${scala.binary.version}</artifactId>
-              <version>${project.version}</version>
-        </dependency>
-      </dependencies>
-    </profile>
-    <!--<profile>
-      <id>hive-versions</id>
-      <activation>
-        <property>
-          <name>hive.version</name>
-        </property>
-      </activation>
-      <dependencies>
-        <dependency>
           <groupId>org.apache.spark</groupId>
-          <artifactId>spark-hive_${scala.binary.version}</artifactId>
+          <artifactId>spark-hive-thriftserver_${scala.binary.version}</artifactId>
           <version>${project.version}</version>
         </dependency>
       </dependencies>
-    </profile>-->
+    </profile>
     <profile>
       <id>spark-ganglia-lgpl</id>
       <dependencies>

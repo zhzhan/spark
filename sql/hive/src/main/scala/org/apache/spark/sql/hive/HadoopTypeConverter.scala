@@ -49,7 +49,7 @@ private[hive] object HadoopTypeConverter extends HiveInspectors {
       case oi: DoubleObjectInspector =>
         (value: Any, row: MutableRow, ordinal: Int) => row.setDouble(ordinal, oi.get(value))
       case oi =>
-        (value: Any, row: MutableRow, ordinal: Int) => row(ordinal) = unwrapData(value, oi)
+        (value: Any, row: MutableRow, ordinal: Int) => row(ordinal) = unwrap(value, oi)
     }
   }
 
@@ -57,7 +57,8 @@ private[hive] object HadoopTypeConverter extends HiveInspectors {
    * Wraps with Hive types based on object inspector.
    * TODO: Consolidate all hive OI/data interface code.
    */
-  def wrapperFor(oi: ObjectInspector): Any => Any = oi match {
+
+  def wrappers(oi: ObjectInspector): Any => Any = oi match {
     case _: JavaHiveVarcharObjectInspector =>
       (o: Any) => new HiveVarchar(o.asInstanceOf[String], o.asInstanceOf[String].size)
 

@@ -40,10 +40,10 @@ private[thriftserver] class SparkSQLOperationManager(hiveContext: HiveContext)
   val sessionToActivePool = Map[HiveSession, String]()
 
   override def newExecuteStatementOperation(
-              parentSession: HiveSession,
-              statement: String,
-              confOverlay: JMap[String, String],
-              async: Boolean): ExecuteStatementOperation = synchronized {
+      parentSession: HiveSession,
+      statement: String,
+      confOverlay: JMap[String, String],
+      async: Boolean): ExecuteStatementOperation = synchronized {
 
     val operation = new SparkExecuteStatementOperation(parentSession, statement, confOverlay)(
       hiveContext, sessionToActivePool)
