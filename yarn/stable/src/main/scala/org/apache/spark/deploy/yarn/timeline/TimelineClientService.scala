@@ -20,7 +20,7 @@ package org.apache.spark.deploy.yarn.timeline
 import java.util
 import java.util.concurrent.atomic.AtomicBoolean
 import java.io._
-import java.util.{ArrayList => JArrayList, HashMap => JHashMap, Map => JMap}
+import java.util.{ArrayList => JArrayList, HashMap => JHashMap, Map => JMap, Collection}
 
 import scala.collection.JavaConversions._
 import scala.reflect.ClassTag
@@ -43,7 +43,6 @@ import org.apache.hadoop.service.AbstractService
 import org.apache.commons.logging.{LogFactory, Log}
 import org.apache.hadoop.yarn.api.records.timeline.TimelinePutResponse
 import org.apache.hadoop.yarn.client.api.TimelineClient
-import java.util.Map
 import org.apache.hadoop.classification.InterfaceAudience
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
@@ -59,6 +58,19 @@ import org.apache.hadoop.yarn.api.records.timeline._
 import org.apache.spark.util.Utils
 import org.apache.spark.{Logging, SparkContext}
 import org.apache.spark.scheduler._
+import java.util.{ArrayList => JArrayList, Collection => JCollection, HashMap => JHashMap,
+Map => JMap}
+import org.json4s.jackson.JsonMethods._
+
+import scala.collection.JavaConversions._
+
+import org.apache.hadoop.yarn.api.records.timeline.TimelineEvent
+import org.json4s.JsonAST._
+
+import org.apache.spark.scheduler.SparkListenerEvent
+import org.apache.spark.util.JsonProtocol
+import org.apache.spark.deploy.yarn.timeline.TimedEvent
+import scala.collection.mutable.LinkedList
 
 
 class ATSHistoryLoggingService(sc: SparkContext, appId: ApplicationId) extends AbstractService("ATS") with Logging {
@@ -69,34 +81,65 @@ class ATSHistoryLoggingService(sc: SparkContext, appId: ApplicationId) extends A
   val PriFilter: String = null
   var appName: String = null
   var userName: String = null
-  var batchSize: Int = 100
+  var startTime: Long = _
+  var endTime: Long = _
+  var bEnd = false
+  var batchSize: Int = 3
   var conf: Configuration = _
+
   import java.util.concurrent.LinkedBlockingQueue
 
   // enqueue event to avoid blocking on main thread.
-  private var eventQueue = new LinkedBlockingQueue[Any]
+  private var eventQueue = new LinkedBlockingQueue[TimedEvent]
   // cache layer to handle ats client failure.
-  private var entityList = new util.LinkedList[TimelineEntity]()
+  private var entityList = new LinkedList[TimelineEntity]
+  var curEntity: Option[TimelineEntity] = None
+  // Do we have enough information filled for the entity
+  var bInit = false
+  // How many event we saved
+  var curEventNum = 0
   private var eventHandlingThread: Thread = null
   private var stopped: AtomicBoolean = new AtomicBoolean(false)
   private var eventCounter: Int = 0
   private var eventsProcessed: Int = 0
   private final val lock: AnyRef = new AnyRef
-  private var maxTimeToWaitOnShutdown: Long = 0L
+  private var maxTimeToWaitOnShutdown: Long = 5000L
+  private var clientCreateNum = 0
 
 
-  def getTimelineClient = timelineClient.getOrElse{
+  def createTimeClient = {
+    clientCreateNum += 1
+    logInfo("Creating timelineClient " + clientCreateNum)
     val client = TimelineClient.createTimelineClient()
     client.init(conf)
     client.start
     timelineClient = Some(client)
     client
-
   }
+
+  def getTimelineClient = timelineClient.getOrElse {
+    clientCreateNum += 1
+    logInfo("Creating timelineClient " + clientCreateNum)
+    val client = TimelineClient.createTimelineClient()
+    client.init(conf)
+    client.start
+    timelineClient = Some(client)
+    client
+  }
+
+  def stopTimelineClient = {
+    timelineClient match {
+      case Some(t) => t.stop
+      case _ =>
+    }
+    timelineClient = None
+  }
+
   override def serviceInit(config: Configuration) {
     logInfo("Initializing ATSService")
     conf = config
-    getTimelineClient
+    createTimeClient
+    //getTimelineClient
     //  maxTimeToWaitOnShutdown = conf.getLong(TezConfiguration.
     // YARN_ATS_EVENT_FLUSH_TIMEOUT_MILLIS,
     // TezConfiguration.YARN_ATS_EVENT_FLUSH_TIMEOUT_MILLIS_DEFAULT)
@@ -104,35 +147,31 @@ class ATSHistoryLoggingService(sc: SparkContext, appId: ApplicationId) extends A
 
   private def addShutdownHook() {
     Runtime.getRuntime.addShutdownHook(new Thread("terminating logging service") {
-      override def run(): Unit = Utils.logUncaughtExceptions {
-        logDebug("Shutdown hook called")
+      /*override def run(): Unit = Utils.logUncaughtExceptions {
+        logInfo("Shutdown hook called")
         stopATS
+      }
+      */
+      override def run() = {
+        logInfo("Shutdown hook called")
+        serviceStop
       }
     })
   }
 
-  def stopATS(): Boolean = {
-    if (!stopped.getAndSet(true)) {
-      logInfo("Stopping ATS service")
-      stop
-    }
-    true
-  }
 
   def startATS(): Boolean = {
-    logInfo("Starting ats service with hadoopConf ...: " + sc.hadoopConfiguration)
+    logInfo("Starting ATS service ...")
     addShutdownHook
     init(sc.hadoopConfiguration)
     start()
     listener = new ATSSparkListener(sc, this)
     sc.listenerBus.addListener(listener)
-    logInfo("ATS service started ...")
-
     true
   }
 
 
-  def enqueue(event: Any) = {
+  def enqueue(event: TimedEvent) = {
     if (!stopped.get()) {
       eventQueue.add(event)
     } else {
@@ -142,9 +181,6 @@ class ATSHistoryLoggingService(sc: SparkContext, appId: ApplicationId) extends A
 
 
   override def serviceStart {
-    logInfo("Starting ATSService")
-   // timelineClient.start
-
     eventHandlingThread = new Thread(new Runnable {
       def run {
         var event: Any = null
@@ -158,7 +194,7 @@ class ATSHistoryLoggingService(sc: SparkContext, appId: ApplicationId) extends A
             //break //todo: break is not supported
             }
           }*/
-        log.info("Starting service to appId " + appId)
+        log.info("Starting service for AppId " + appId)
         while (!stopped.get && !Thread.currentThread.isInterrupted) {
           if (eventCounter != 0 && eventCounter % 1000 == 0) {
             //  LOG.info("Event queue stats" + ", eventsProcessedSinceLastUpdate=" +
@@ -170,23 +206,11 @@ class ATSHistoryLoggingService(sc: SparkContext, appId: ApplicationId) extends A
           }
           try {
             event = eventQueue.take
-          } catch {
-            case e: InterruptedException => {
-              logError("queue take exception", e)
-              //  LOG.info("EventQueue take interrupted. Returning")
-              return
-            }
-          }
-          lock synchronized {
             eventsProcessed += 1
-            try {
-              handleEvent(event.asInstanceOf[SparkListenerEvent], false)
-            }
-            catch {
-              case e: Exception => {
-                logError("handle event exception", e)
-                // LOG.warn("Error handling event", e)
-              }
+            handleEvent(event.asInstanceOf[TimedEvent], false)
+          } catch {
+            case _ => {
+              logWarning("EventQueue take interrupted. Returning")
             }
           }
         }
@@ -195,60 +219,70 @@ class ATSHistoryLoggingService(sc: SparkContext, appId: ApplicationId) extends A
     eventHandlingThread.start
   }
 
-  override def serviceStop {
-    logInfo("Stopping ATSService")
-    stopped.set(true)
+  private def stopATS(): Boolean = {
     if (eventHandlingThread != null) {
       eventHandlingThread.interrupt
     }
-    lock synchronized {
-      if (!eventQueue.isEmpty) {
-        // LOG.warn("ATSService being stopped" + ", eventQueueBacklog="
-        // + eventQueue.size + ", maxTimeLeftToFlush=" + maxTimeToWaitOnShutdown)
-        val startTime: Long = System.currentTimeMillis()
-        if (maxTimeToWaitOnShutdown > 0) {
-          val endTime: Long = startTime + maxTimeToWaitOnShutdown
-          while (endTime >= System.currentTimeMillis()) {
-            val event: Any = eventQueue.poll
-            if (event == null) {
-              //break //todo: break is not supported
-            }
-            try {
-              handleEvent(event.asInstanceOf[SparkListenerEvent], true)
-            } catch {
-              case e: Exception => {
-                logError("Error handling event", e)
-              }
-            }
-          }
+
+    logInfo("push out all events")
+    if (!eventQueue.isEmpty) {
+      val curTime: Long = System.currentTimeMillis()
+      if (maxTimeToWaitOnShutdown > 0) {
+        val endTime: Long = curTime + maxTimeToWaitOnShutdown
+        while (endTime >= System.currentTimeMillis()) {
+          val event = eventQueue.poll
+          handleEvent(event, true)
         }
       }
+    } else {
+      handleEvent(null, true)
     }
     if (!eventQueue.isEmpty) {
       logWarning("Did not finish flushing eventQueue before " +
         "stopping ATSService, eventQueueBacklog=" + eventQueue.size)
     }
-    getTimelineClient.stop
+    stopTimelineClient
+    logInfo("ATS service terminated")
+    //new Throwable().printStackTrace()
+    true
   }
 
-  var curEntity: Option[TimelineEntity] = None
-  // Do we have enough information filled for the entity
-  var bInit = false
-  // How many event we saved
-  var curEventNum = 0
+  override def serviceStop {
+    logInfo("Stopping ATS service")
+    if (!bEnd) {
+      eventQueue.add(new TimedEvent(SparkListenerApplicationEnd(System.currentTimeMillis()),
+        System.currentTimeMillis()))
+    }
+    if (!stopped.getAndSet(true)) {
+      stopATS
+      stop
+    }
+  }
+
+  /*
+  override def serviceStop {
+    stopped.set(true)
+
+  }
+*/
+
 
   def getCurrentEntity = {
     curEntity.getOrElse {
       val entity: TimelineEntity = new TimelineEntity
+      logInfo("Create new entity")
       curEventNum = 0
+      entity.setEntityType(ENTITY_TYPE)
+      entity.setEntityId(appId.toString)
       if (bInit) {
-        entity.setEntityType(ENTITY_TYPE)
-        entity.setEntityId(appId.toString)
+
         //sparkEntity.setTimestamp(java.lang.System.curimaryFilter("appName", appName)
+        entity.addPrimaryFilter("appName", appName)
         entity.addPrimaryFilter("appUser", userName)
         entity.addOtherInfo("appName", appName)
-        entity.addOtherInfo("sparkUser", userName)
+        entity.addOtherInfo("appUser", userName)
       }
+      curEntity = Some(entity)
       entity
     }
   }
@@ -260,29 +294,74 @@ class ATSHistoryLoggingService(sc: SparkContext, appId: ApplicationId) extends A
     if (entityList.isEmpty) {
       return
     }
-    entityList.foreach {
-      entity => {
+    logInfo("before pushEntities: " + entityList.size())
+    var client = timelineClient.getOrElse(createTimeClient) //getTimelineClient
+    entityList = entityList.filter {
+      en => {
+        if (en == null) {
+          false
+        } else {
+          try {
+            val response: TimelinePutResponse = client.putEntities(en)
+            if (response != null && !response.getErrors.isEmpty) {
+              val err: TimelinePutResponse.TimelinePutError = response.getErrors.get(0)
+              if (err.getErrorCode != 0) {
+                timelineClient = None
+                logError("Could not post history event to ATS, eventType=" + err.getErrorCode)
+              }
+              true
+            } else {
+              logInfo("entity pushed: " + en)
+              false
+            }
+          } catch {
+            case e: Exception => {
+              timelineClient = None
+              client = getTimelineClient
+              logError("Could not handle history entity: " + e)
+              true
+            }
+          }
+        }
+      }
+    }
+    logInfo("after pushEntities: " + entityList.size())
+    /*
+    try {
+      logInfo("pushEntities: " + entityList.size())
+
+      while (entityList.size() > 0) {
+        val candidate = entityList.remove()
         try {
-          val response: TimelinePutResponse = getTimelineClient.putEntities(entity)
+          val response: TimelinePutResponse = getTimelineClient.putEntities(candidate)
           if (response != null && !response.getErrors.isEmpty) {
             val err: TimelinePutResponse.TimelinePutError = response.getErrors.get(0)
             if (err.getErrorCode != 0) {
-              stopped.set(true)
               logError("Could not post history event to ATS, eventType=" + err.getErrorCode)
             }
+            failed = Some(candidate)
+            break
           } else {
             logInfo("entity pushed: " + curEntity.get)
           }
         } catch {
           case e: Exception => {
             timelineClient = None
+            failed = Some(candidate)
             logError("Could not handle history entity: " + curEntity.get)
-            entityList.addFirst(entity)
+            throw e
           }
         }
       }
-    }
+    } finally {
+        failed match {
+          case Some(f) => entityList.addFirst(f)
+            logError("Enqueue lost entity " + f)
+          case None =>
+        }
+    }*/
   }
+
 
   /**
    * If the event reaches the batch size or flush is true, push events to ATS.
@@ -291,43 +370,139 @@ class ATSHistoryLoggingService(sc: SparkContext, appId: ApplicationId) extends A
    * @param flush
    * @return
    */
-  private def handleEvent(event: SparkListenerEvent, flush: Boolean) = {
-    event match {
-      case e: SparkListenerApplicationStart =>
-        // we already have all information,
-        // flush it for old one to switch to new one
-        if (bInit) {
-          entityList.add(curEntity.get)
-        } else {
-          curEntity match {
-            case Some(e) => e.setEntityType(ENTITY_TYPE)
-              e.setEntityId(appId.toString)
-              //sparkEntity.setTimestamp(java.lang.System.curimaryFilter("appName", appName)
-              e.addPrimaryFilter("appUser", userName)
-              e.addOtherInfo("appName", appName)
-              e.addOtherInfo("sparkUser", userName)
-            case None =>
-          }
+  private def handleEvent(event: TimedEvent,  flush: Boolean): Unit = {
+    logInfo("handle event")
+    var push = false
+    //if we receive a new appStart event, we always push
+    //not much contention here, only happens when servcie is stopped
+    lock synchronized {
+      if (event != null) {
+        logInfo("Handle event: " + event)
+        val obj = JsonProtocol.sparkEventToJson(event.sparkEvent)
+        val map = compact(render(obj))
+        if (map == null || map == "") return
+        logInfo("event detail: " + map)
+        event.sparkEvent match {
+          case start: SparkListenerApplicationStart =>
+            // we already have all information,
+            // flush it for old one to switch to new one
+            logInfo("Receive application start event: " + event)
+            //flush this entity
+            entityList :+= curEntity.getOrElse(null)
+            curEntity = None
+            /*   if (bInit) {
+              entityList :+= curEntity.getOrElse(null)
+              curEntity = None
+            } else {*/
+            appName =start.appName;
+            userName = start.sparkUser
+            startTime = start.time
+            bInit = true
+            val en = getCurrentEntity
+            en.addPrimaryFilter("startApp", "newApp")
+            push = true
 
+          /*   curEntity match {
+                case Some(e) => e.setEntityType(ENTITY_TYPE)
+                  //sparkEntity.setTimestamp(java.lang.System.curimaryFilter("appName", appName)
+                  e.addPrimaryFilter("appName", appName)
+                  e.addPrimaryFilter("appUser", userName)
+                  e.addOtherInfo("sparkUser", userName)
+                case None =>
+              }
+
+            }*/
+          case end: SparkListenerApplicationEnd =>
+            if (!bEnd) {
+              // we already have all information,
+              // flush it for old one to switch to new one
+              logInfo("Receive application end event: " + event)
+              //flush this entity
+              entityList :+= curEntity.getOrElse(null)
+              curEntity = None
+              bEnd = true
+              val en = getCurrentEntity
+              en.addPrimaryFilter("endApp", "oldApp")
+              en.addOtherInfo("startTime", startTime)
+              en.addOtherInfo("endTime", end.time)
+              push = true
+            }
+          case _ =>
         }
-        appName = e.appName;
-        userName = e.sparkUser
 
-      case _ =>
+        val tlEvent = new TimelineEvent()
+        tlEvent.setEventType(Utils.getFormattedClassName(event.sparkEvent).toString)
+        tlEvent.setTimestamp(event.time)
+        //TODO
+        val kvMap = new JHashMap[String, Object]();
+        kvMap.put(Utils.getFormattedClassName(event.sparkEvent).toString, map)
+        tlEvent.setEventInfo(kvMap)
+        getCurrentEntity.addEvent(tlEvent)
+        curEventNum += 1
+      }
+      logInfo("current event num: " + curEventNum)
+      if (curEventNum == batchSize || flush || push) {
+        entityList :+= curEntity.getOrElse(null)
+        // entityList :+= curEntity.get
+        curEntity = None
+        curEventNum = 0
+      }
+      flushEntity()
     }
-
-    val tlEvent = new TimelineEvent()
-    tlEvent.setEventType("spark_event_" + appId.toString)
-    //TODO
-    val kvMap = new util.HashMap[String, Object]();
-    kvMap.put(Utils.getFormattedClassName(event).toString, event)
-    tlEvent.setEventInfo(kvMap)
-    getCurrentEntity.addEvent(tlEvent)
-    curEventNum += 1
-    if (curEventNum == batchSize || flush) {
-      entityList.add(curEntity.get)
-      curEntity = null
-    }
-    flushEntity()
   }
+}
+
+object ATSHistoryLoggingService {
+
+  /**
+   * Converts a Java object to its equivalent json4s representation.
+   */
+  def toJValue(obj: Object): JValue = obj match {
+    case str: String => JString(str)
+    case dbl: java.lang.Double => JDouble(dbl)
+    case dec: java.math.BigDecimal => JDecimal(dec)
+    case int: java.lang.Integer => JInt(BigInt(int))
+    case long: java.lang.Long => JInt(BigInt(long))
+    case bool: java.lang.Boolean => JBool(bool)
+    case map: JMap[_, _] =>
+      val jmap = map.asInstanceOf[JMap[String, Object]]
+      JObject(jmap.entrySet().map { e => (e.getKey() -> toJValue(e.getValue())) }.toList)
+    case array: JCollection[_] =>
+      JArray(array.asInstanceOf[JCollection[Object]].map(o => toJValue(o)).toList)
+    case null => JNothing
+  }
+
+  /**
+   * Converts a JValue into its Java equivalent.
+   */
+  def toJavaObject(v: JValue): Object = v match {
+    case JNothing => null
+    case JNull => null
+    case JString(s) => s
+    case JDouble(num) => java.lang.Double.valueOf(num)
+    case JDecimal(num) => num.bigDecimal
+    case JInt(num) => java.lang.Long.valueOf(num.longValue)
+    case JBool(value) => java.lang.Boolean.valueOf(value)
+    case obj: JObject => toJavaMap(obj)
+    case JArray(vals) => {
+      val list = new JArrayList[Object]()
+      vals.foreach(x => list.add(toJavaObject(x)))
+      list
+    }
+  }
+
+  /**
+   * Converts a json4s list of fields into a Java Map suitable for serialization by Jackson,
+   * which is used by the ATS client library.
+   */
+  def toJavaMap(obj: JObject): JHashMap[String, Object] = {
+    val map = new JHashMap[String, Object]()
+    obj.obj.foreach(f => map.put(f._1, toJavaObject(f._2)))
+    map
+  }
+
+  def toSparkEvent(event: TimelineEvent): SparkListenerEvent = {
+    JsonProtocol.sparkEventFromJson(toJValue(event.getEventInfo()))
+  }
+
 }

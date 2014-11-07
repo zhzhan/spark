@@ -31,237 +31,113 @@ import scala.collection.mutable.{ListBuffer, HashMap}
  * Created by zzhang on 8/4/14.
  */
 
+
+case class TimedEvent(sparkEvent: SparkListenerEvent, time: Long)
+
 class ATSSparkListener(sc: SparkContext, service: ATSHistoryLoggingService)
   extends SparkListener with Logging {
-/*
-  import JobProgressListener._
 
-  // How many stages to remember
-  val retainedStages = conf.getInt("spark.ui.retainedStages", DEFAULT_RETAINED_STAGES)
 
-  val activeStages = HashMap[Int, StageInfo]()
-  val completedStages = ListBuffer[StageInfo]()
-  val failedStages = ListBuffer[StageInfo]()
-
-  val stageIdToData = new HashMap[Int, StageUIData]
-
-  val poolToActiveStages = HashMap[String, HashMap[Int, StageInfo]]()
-
-  val executorIdToBlockManagerId = HashMap[String, BlockManagerId]()
-
-  var schedulingMode: Option[SchedulingMode] = None
-
-  def blockManagerIds = executorIdToBlockManagerId.values.toSeq
-*/
-  override def onStageCompleted(stageCompleted: SparkListenerStageCompleted) = synchronized {
-    logInfo("stageCompleted: " + stageCompleted)
-    service.enqueue(stageCompleted)
-   /* val stage = stageCompleted.stageInfo
-    val stageId = stage.stageId
-    val stageData = stageIdToData.getOrElseUpdate(stageId, {
-      logWarning("Stage completed for unknown stage " + stageId)
-      new StageUIData
-    })
-
-    poolToActiveStages.get(stageData.schedulingPool).foreach(_.remove(stageId))
-    activeStages.remove(stageId)
-    if (stage.failureReason.isEmpty) {
-      completedStages += stage
-      trimIfNecessary(completedStages)
-    } else {
-      failedStages += stage
-      trimIfNecessary(failedStages)
-    }*/
-  }
-
-  /** If stages is too large, remove and garbage collect old stages */
- /* private def trimIfNecessary(stages: ListBuffer[StageInfo]) = synchronized {
-    if (stages.size > retainedStages) {
-      val toRemove = math.max(retainedStages / 10, 1)
-      stages.take(toRemove).foreach { s => stageIdToData.remove(s.stageId) }
-      stages.trimStart(toRemove)
-    }
-  }*/
-
-  /** For FIFO, all stages are contained by "default" pool but "default" pool here is meaningless */
-  override def onStageSubmitted(stageSubmitted: SparkListenerStageSubmitted) = synchronized {
-    logInfo("stageSubmitted: " + stageSubmitted)
-    service.enqueue(stageSubmitted)
-   /* val stage = stageSubmitted.stageInfo
-    activeStages(stage.stageId) = stage
-
-    val poolName = Option(stageSubmitted.properties).map {
-      p => p.getProperty("spark.scheduler.pool", DEFAULT_POOL_NAME)
-    }.getOrElse(DEFAULT_POOL_NAME)
-
-    val stageData = stageIdToData.getOrElseUpdate(stage.stageId, new StageUIData)
-    stageData.schedulingPool = poolName
-
-    stageData.description = Option(stageSubmitted.properties).flatMap {
-      p => Option(p.getProperty(SparkContext.SPARK_JOB_DESCRIPTION))
-    }
-
-    val stages = poolToActiveStages.getOrElseUpdate(poolName, new HashMap[Int, StageInfo]())
-    stages(stage.stageId) = stage*/
-  }
-
-  override def onTaskStart(taskStart: SparkListenerTaskStart) = synchronized {
-    logInfo("taskStart: " + taskStart)
-    service.enqueue(taskStart)
-   /* val taskInfo = taskStart.taskInfo
-    if (taskInfo != null) {
-      val stageData = stageIdToData.getOrElseUpdate(taskStart.stageId, {
-        logWarning("Task start for unknown stage " + taskStart.stageId)
-        new StageUIData
-      })
-      stageData.numActiveTasks += 1
-      stageData.taskData.put(taskInfo.taskId, new TaskUIData(taskInfo))
-    }*/
-  }
-
-  override def onTaskGettingResult(taskGettingResult: SparkListenerTaskGettingResult) {
-    logInfo("taskGettingResult: " + taskGettingResult)
-    service.enqueue(taskGettingResult)
-    // Do nothing: because we don't do a deep copy of the TaskInfo, the TaskInfo in
-    // stageToTaskInfos already has the updated status.
-  }
-
-  override def onTaskEnd(taskEnd: SparkListenerTaskEnd) = synchronized {
-    logInfo("taskEnd: " + taskEnd)
-    service.enqueue(taskEnd)
-   /* val info = taskEnd.taskInfo
-    if (info != null) {
-      val stageData = stageIdToData.getOrElseUpdate(taskEnd.stageId, {
-        logWarning("Task end for unknown stage " + taskEnd.stageId)
-        new StageUIData
-      })
-
-      val execSummaryMap = stageData.executorSummary
-      val execSummary = execSummaryMap.getOrElseUpdate(info.executorId, new ExecutorSummary)
-
-      taskEnd.reason match {
-        case Success =>
-          execSummary.succeededTasks += 1
-        case _ =>
-          execSummary.failedTasks += 1
-      }
-      execSummary.taskTime += info.duration
-      stageData.numActiveTasks -= 1
-
-      val (errorMessage, metrics): (Option[String], Option[TaskMetrics]) =
-        taskEnd.reason match {
-          case org.apache.spark.Success =>
-            stageData.numCompleteTasks += 1
-            (None, Option(taskEnd.taskMetrics))
-          case e: ExceptionFailure =>  // Handle ExceptionFailure because we might have metrics
-            stageData.numFailedTasks += 1
-            (Some(e.toErrorString), e.metrics)
-          case e: TaskFailedReason =>  // All other failure cases
-            stageData.numFailedTasks += 1
-            (Some(e.toErrorString), None)
-        }
-
-      if (!metrics.isEmpty) {
-        val oldMetrics = stageData.taskData.get(info.taskId).flatMap(_.taskMetrics)
-        updateAggregateMetrics(stageData, info.executorId, metrics.get, oldMetrics)
-      }
-
-      val taskData = stageData.taskData.getOrElseUpdate(info.taskId, new TaskUIData(info))
-      taskData.taskInfo = info
-      taskData.taskMetrics = metrics
-      taskData.errorMessage = errorMessage
-    }*/
+  /**
+   * Called when a stage completes successfully or fails, with information on the completed stage.
+   */
+  override def onStageCompleted(stageCompleted: SparkListenerStageCompleted) {
+    service.enqueue(new TimedEvent(stageCompleted, System.currentTimeMillis))
   }
 
   /**
-   * Upon receiving new metrics for a task, updates the per-stage and per-executor-per-stage
-   * aggregate metrics by calculating deltas between the currently recorded metrics and the new
-   * metrics.
+   * Called when a stage is submitted
    */
- /* def updateAggregateMetrics(
-                              stageData: StageUIData,
-                              execId: String,
-                              taskMetrics: TaskMetrics,
-                              oldMetrics: Option[TaskMetrics]) {
-   val execSummary = stageData.executorSummary.getOrElseUpdate(execId, new ExecutorSummary)
-
-    val shuffleWriteDelta =
-      (taskMetrics.shuffleWriteMetrics.map(_.shuffleBytesWritten).getOrElse(0L)
-        - oldMetrics.flatMap(_.shuffleWriteMetrics).map(_.shuffleBytesWritten).getOrElse(0L))
-    stageData.shuffleWriteBytes += shuffleWriteDelta
-    execSummary.shuffleWrite += shuffleWriteDelta
-
-    val shuffleReadDelta =
-      (taskMetrics.shuffleReadMetrics.map(_.remoteBytesRead).getOrElse(0L)
-        - oldMetrics.flatMap(_.shuffleReadMetrics).map(_.remoteBytesRead).getOrElse(0L))
-    stageData.shuffleReadBytes += shuffleReadDelta
-    execSummary.shuffleRead += shuffleReadDelta
-
-    val diskSpillDelta =
-      taskMetrics.diskBytesSpilled - oldMetrics.map(_.diskBytesSpilled).getOrElse(0L)
-    stageData.diskBytesSpilled += diskSpillDelta
-    execSummary.diskBytesSpilled += diskSpillDelta
-
-    val memorySpillDelta =
-      taskMetrics.memoryBytesSpilled - oldMetrics.map(_.memoryBytesSpilled).getOrElse(0L)
-    stageData.memoryBytesSpilled += memorySpillDelta
-    execSummary.memoryBytesSpilled += memorySpillDelta
-
-    val timeDelta =
-      taskMetrics.executorRunTime - oldMetrics.map(_.executorRunTime).getOrElse(0L)
-    stageData.executorRunTime += timeDelta
-  }*/
-
-  override def onExecutorMetricsUpdate(executorMetricsUpdate: SparkListenerExecutorMetricsUpdate) {
-    logInfo("executorMetricsUpdate: " + executorMetricsUpdate)
-    service.enqueue(executorMetricsUpdate)
-  /*  for ((taskId, sid, taskMetrics) <- executorMetricsUpdate.taskMetrics) {
-      val stageData = stageIdToData.getOrElseUpdate(sid, {
-        logWarning("Metrics update for task in unknown stage " + sid)
-        new StageUIData
-      })
-      val taskData = stageData.taskData.get(taskId)
-      taskData.map { t =>
-        if (!t.taskInfo.finished) {
-          updateAggregateMetrics(stageData, executorMetricsUpdate.execId, taskMetrics,
-            t.taskMetrics)
-
-          // Overwrite task metrics
-          t.taskMetrics = Some(taskMetrics)
-        }
-      }
-    }*/
+  override def onStageSubmitted(stageSubmitted: SparkListenerStageSubmitted) {
+    service.enqueue(new TimedEvent(stageSubmitted, System.currentTimeMillis))
   }
 
+  /**
+   * Called when a task starts
+   */
+  override def onTaskStart(taskStart: SparkListenerTaskStart) {
+    service.enqueue(new TimedEvent(taskStart, System.currentTimeMillis))
+  }
+
+  /**
+   * Called when a task begins remotely fetching its result (will not be called for tasks that do
+   * not need to fetch the result remotely).
+   */
+  override def onTaskGettingResult(taskGettingResult: SparkListenerTaskGettingResult) {
+    service.enqueue(new TimedEvent(taskGettingResult, System.currentTimeMillis))
+  }
+
+  /**
+   * Called when a task ends
+   */
+  override def onTaskEnd(taskEnd: SparkListenerTaskEnd) {
+    service.enqueue(new TimedEvent(taskEnd, System.currentTimeMillis))
+  }
+
+  /**
+   * Called when a job starts
+   */
+  override def onJobStart(jobStart: SparkListenerJobStart) {
+    service.enqueue(new TimedEvent(jobStart, System.currentTimeMillis))
+  }
+
+
+  /**
+   * Called when a job ends
+   */
+  override def onJobEnd(jobEnd: SparkListenerJobEnd) {
+    service.enqueue(new TimedEvent(jobEnd, System.currentTimeMillis))
+  }
+
+  /**
+   * Called when environment properties have been updated
+   */
   override def onEnvironmentUpdate(environmentUpdate: SparkListenerEnvironmentUpdate) {
-    logInfo("environmentUpdate: " + environmentUpdate)
-    service.enqueue(environmentUpdate)
-  /*  synchronized {
-      schedulingMode = environmentUpdate
-        .environmentDetails("Spark Properties").toMap
-        .get("spark.scheduler.mode")
-        .map(SchedulingMode.withName)
-    }*/
+    service.enqueue(new TimedEvent(environmentUpdate, System.currentTimeMillis))
   }
 
+  /**
+   * Called when a new block manager has joined
+   */
   override def onBlockManagerAdded(blockManagerAdded: SparkListenerBlockManagerAdded) {
-    logInfo("blockManagerAdded: " + blockManagerAdded)
-    service.enqueue(blockManagerAdded)
-  /*  synchronized {
-      val blockManagerId = blockManagerAdded.blockManagerId
-      val executorId = blockManagerId.executorId
-      executorIdToBlockManagerId(executorId) = blockManagerId
-    }*/
+    service.enqueue(new TimedEvent(blockManagerAdded, System.currentTimeMillis))
   }
 
+  /**
+   * Called when an existing block manager has been removed
+   */
   override def onBlockManagerRemoved(blockManagerRemoved: SparkListenerBlockManagerRemoved) {
-    logInfo("blockManagerRemoved: " + blockManagerRemoved)
-    service.enqueue(blockManagerRemoved)
-  /*  synchronized {
-      val executorId = blockManagerRemoved.blockManagerId.executorId
-      executorIdToBlockManagerId.remove(executorId)
-    }*/
+    service.enqueue(new TimedEvent(blockManagerRemoved, System.currentTimeMillis))
   }
+
+  /**
+   * Called when an RDD is manually unpersisted by the application
+   */
+  override def onUnpersistRDD(unpersistRDD: SparkListenerUnpersistRDD) {
+    service.enqueue(new TimedEvent(unpersistRDD, System.currentTimeMillis))
+  }
+
+  /**
+   * Called when the application starts
+   */
+  override def onApplicationStart(applicationStart: SparkListenerApplicationStart) {
+    service.enqueue(new TimedEvent(applicationStart, System.currentTimeMillis))
+  }
+
+  /**
+   * Called when the application ends
+   */
+  override def onApplicationEnd(applicationEnd: SparkListenerApplicationEnd) {
+    service.enqueue(new TimedEvent(applicationEnd, System.currentTimeMillis))
+  }
+
+  /**
+   * Called when the driver receives task metrics from an executor in a heartbeat.
+   */
+  override def onExecutorMetricsUpdate(executorMetricsUpdate: SparkListenerExecutorMetricsUpdate) {
+    service.enqueue(new TimedEvent(executorMetricsUpdate, System.currentTimeMillis))
+  }
+
 
 }
 

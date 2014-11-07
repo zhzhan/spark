@@ -24,6 +24,8 @@ import java.net.URI
 import java.util.{Collection => JCollection, Map => JMap}
 import javax.ws.rs.core.MediaType
 
+import org.json4s.jackson.JsonMethods._
+
 import scala.collection.JavaConversions._
 import scala.collection.mutable
 
@@ -39,19 +41,20 @@ import org.apache.spark.scheduler.{ApplicationEventListener, SparkListenerBus}
 import org.apache.spark.ui.SparkUI
 import org.apache.spark.util.JsonProtocol
 import org.apache.spark.scheduler._
+import org.apache.hadoop.yarn.api.records.timeline.{TimelineEntity, TimelineEvent}
 
 class ATSHistoryProvider(conf: SparkConf) extends ApplicationHistoryProvider
+
+
 with Logging {
 
+  logInfo("Initiating ATSHistoryProvider ...")
   private val yarnConf = new YarnConfiguration()
   private val NOT_STARTED = "<Not Started>"
 
   // Copied from Yarn's TimelineClientImpl.java.
   private val RESOURCE_URI_STR = s"/ws/v1/timeline/SparkApplication"
 
-  override def getListing(): Seq[ApplicationHistoryInfo] = {
-    null
-  }
   private val timelineUri = {
     val isHttps = YarnConfiguration.useHttps(yarnConf)
     val addressKey =
@@ -64,6 +67,43 @@ with Logging {
     URI.create(s"$protocol${yarnConf.get(addressKey)}$RESOURCE_URI_STR")
   }
 
+  override def getListing(): Seq[ApplicationHistoryInfo] = {
+    logInfo("getListing with Uri: " + timelineUri)
+    val resource = client.resource(timelineUri)
+    val entities = resource
+      .queryParam("primaryFilter", "endApp:oldApp")
+      //.queryParam("fields", "primaryFilters,otherInfo")
+      .accept(MediaType.APPLICATION_JSON)
+      .get(classOf[ClientResponse])
+      .getEntity(classOf[TimelineEntities])
+    logInfo(entities.toString)
+
+    /**
+     * private[spark] case class ApplicationHistoryInfo(
+    id: String,
+    name: String,
+    startTime: Long,
+    endTime: Long,
+    lastUpdated: Long,
+    sparkUser: String)
+     */
+    entities.getEntities().flatMap { en =>
+      try {
+        Some(ApplicationHistoryInfo(en.getEntityId(),
+          en.getOtherInfo().get("appName").asInstanceOf[String],
+          en.getOtherInfo().get("startTime").asInstanceOf[Number].longValue,
+          en.getOtherInfo().get("endTime").asInstanceOf[Number].longValue,
+          en.getOtherInfo().get("endTime").asInstanceOf[Number].longValue,
+          en.getOtherInfo().get("appUser").asInstanceOf[String]))
+      } catch {
+        case e: Exception =>
+          logInfo("Failed to parse event.", e)
+          None
+      }
+    }
+  }
+
+
 
   private val client = {
     val cc = new DefaultClientConfig()
@@ -74,13 +114,22 @@ with Logging {
   }
 
   override def getAppUI(appId: String): Option[SparkUI] = {
+    logInfo("Requst UI with appId " + appId)
+    val eventsUri = timelineUri.resolve(s"${timelineUri.getPath()}/$appId")
+    val resource = client.resource(eventsUri)
+    val entity = resource
+      .accept(MediaType.APPLICATION_JSON)
+      .get(classOf[ClientResponse])
+      .getEntity(classOf[TimelineEntity])
+    logInfo(entity.toString)
 
-    val eventsUri = timelineUri.resolve(s"${timelineUri.getPath()}/events")
+/*
+    logInfo("eventsUri: " + eventsUri)
     val resource = client.resource(eventsUri)
       .queryParam("entityId", appId)
       .accept(MediaType.APPLICATION_JSON)
 
-    val events = resource.get(classOf[ClientResponse]).getEntity(classOf[TimelineEvents])
+    val entities = resource.get(classOf[ClientResponse]).getEntity(classOf[TimelineEntities])*/
     val bus = new SparkListenerBus() { }
     val appListener = new ApplicationEventListener()
     bus.addListener(appListener)
@@ -90,11 +139,12 @@ with Logging {
       val appSecManager = new SecurityManager(conf)
       SparkUI.createHistoryUI(conf, bus, appSecManager, appId,"/history/" + appId)
     }
+    val events = entity.getEvents.flatMap(_.getEventInfo.values)
 
-    events.getAllEvents().foreach { entityEvents =>
-      entityEvents.getEvents().reverse.foreach { e =>
-        bus.postToAll(e.getEventInfo.asInstanceOf[SparkListenerEvent])
-      }
+      events.reverse.foreach { line =>
+      //  val line = e.getEventInfo.asInstanceOf[String]
+        logInfo(line.asInstanceOf[String])
+        bus.postToAll(JsonProtocol.sparkEventFromJson(parse(line.asInstanceOf[String])))
     }
     ui.setAppName(s"${appListener.appName.getOrElse(NOT_STARTED)} ($appId)")
 
@@ -106,8 +156,10 @@ with Logging {
       appListener.viewAcls.getOrElse(""))
     Some(ui)
   }
-  override def getConfig(): Map[String, String] =
+  override def getConfig(): Map[String, String] = {
+    logInfo("getConfig ...:" +  timelineUri.resolve("/").toString())
     Map(("Yarn Application Timeline Server" -> timelineUri.resolve("/").toString()))
+  }
 
   override def stop(): Unit = client.destroy()
 
