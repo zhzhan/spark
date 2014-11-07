@@ -1259,6 +1259,13 @@
     </profile>
 
     <profile>
+      <id>yarn-history</id>
+      <modules>
+        <module>yarn-history</module>
+      </modules>
+    </profile>
+
+    <profile>
       <id>mapr3</id>
       <activation>
         <activeByDefault>false</activeByDefault>

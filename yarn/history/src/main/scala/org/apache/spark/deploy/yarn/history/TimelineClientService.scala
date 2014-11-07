@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.deploy.yarn.timeline
+package org.apache.spark.deploy.yarn.history
 
 import java.util
 import java.util.concurrent.atomic.AtomicBoolean
@@ -73,9 +73,10 @@ import org.apache.spark.deploy.yarn.timeline.TimedEvent
 import scala.collection.mutable.LinkedList
 
 
-class ATSHistoryLoggingService(sc: SparkContext, appId: ApplicationId)
-  extends AbstractService("ATS") with Logging {
+class ATSHistoryLoggingService  extends AbstractService("ATS") with YarnHistoryService with Logging{
   logInfo("sparkContext: " + sc)
+  var sc: SparkContext = _
+  var appId: ApplicationId = _
   var timelineClient: Option[TimelineClient] = None
   var listener: ATSSparkListener = _
   val ENTITY_TYPE = "SparkApplication"
@@ -161,7 +162,9 @@ class ATSHistoryLoggingService(sc: SparkContext, appId: ApplicationId)
   }
 
 
-  def startATS(): Boolean = {
+  def startATS(context: SparkContext, id: ApplicationId): Boolean = {
+    sc = context
+    appId = id
     logInfo("Starting ATS service ...")
     addShutdownHook
     init(sc.hadoopConfiguration)

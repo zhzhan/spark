@@ -16,34 +16,41 @@
   ~ limitations under the License.
   -->
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-    <parent>
-        <groupId>org.apache.spark</groupId>
-        <artifactId>yarn-parent_2.10</artifactId>
-        <version>1.2.0-SNAPSHOT</version>
-        <relativePath>../pom.xml</relativePath>
-    </parent>
-    <properties>
-        <sbt.project.name>yarn-history</sbt.project.name>
-    </properties>
-
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
     <groupId>org.apache.spark</groupId>
-    <artifactId>spark-yarn-history_2.10</artifactId>
-    <packaging>jar</packaging>
-    <name>Spark Project YARN Application History Integration</name>
+    <artifactId>yarn-parent_2.10</artifactId>
+    <version>1.2.0-SNAPSHOT</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+  <properties>
+    <sbt.project.name>yarn-history</sbt.project.name>
+  </properties>
 
-    <dependencies>
-        <dependency>
-            <!-- Matches the version of jackson-core-asl pulled in by avro -->
-            <groupId>org.codehaus.jackson</groupId>
-            <artifactId>jackson-mapper-asl</artifactId>
-            <version>1.9.5</version>
-        </dependency>
-        <dependency>
-            <!-- Matches the version of jackson-core-asl pulled in by avro -->
-            <groupId>org.codehaus.jackson</groupId>
-            <artifactId>jackson-core-asl</artifactId>
-            <version>1.9.5</version>
-        </dependency>
-    </dependencies>
+  <groupId>org.apache.spark</groupId>
+  <artifactId>spark-yarn-history_2.10</artifactId>
+  <packaging>jar</packaging>
+  <name>Spark Project YARN Application History Integration</name>
+
+  <dependencies>
+      <dependency>
+          <!-- Matches the version of jackson-core-asl pulled in by avro -->
+          <groupId>org.codehaus.jackson</groupId>
+          <artifactId>jackson-core-asl</artifactId>
+      </dependency>
+
+      <dependency>
+          <groupId>org.codehaus.jackson</groupId>
+          <artifactId>jackson-xc</artifactId>
+      </dependency>
+      <dependency>
+          <groupId>org.codehaus.jackson</groupId>
+          <artifactId>jackson-jaxrs</artifactId>
+      </dependency>
+      <dependency>
+          <groupId>org.apache.spark</groupId>
+          <artifactId>spark-yarn_${scala.binary.version}</artifactId>
+          <version>${project.version}</version>
+      </dependency>
+  </dependencies>
 </project>
