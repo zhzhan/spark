@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.deploy.yarn.timeline
+package org.apache.spark.deploy.yarn.history
 
 import org.apache.spark.{Logging, SparkConf}
 import org.apache.spark.deploy.history.{HistoryServer, ApplicationHistoryProvider, ApplicationHistoryInfo}
