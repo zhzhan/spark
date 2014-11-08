@@ -56,7 +56,7 @@ private[spark] class YarnClientSchedulerBackend(
     totalExpectedExecutors = args.numExecutors
     client = new Client(args, conf)
     appId = client.submitApplication()
-    YarnHistoryService.start(sc, appId)
+    YarnService.start(sc, appId)
    // val logService = new ATSHistoryLoggingService(sc, appId)
    // logService.startATS
     waitForApplication()

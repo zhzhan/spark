@@ -43,7 +43,7 @@ import org.apache.spark.util.JsonProtocol
 import org.apache.spark.scheduler._
 import org.apache.hadoop.yarn.api.records.timeline.{TimelineEntity, TimelineEvent}
 
-class ATSHistoryProvider(conf: SparkConf)
+class YarnHistoryProvider(conf: SparkConf)
   extends ApplicationHistoryProvider with Logging {
 
   logInfo("Initiating ATSHistoryProvider ...")
@@ -125,7 +125,7 @@ class ATSHistoryProvider(conf: SparkConf)
     //  .queryParam("entityId", appId)
     //  .accept(MediaType.APPLICATION_JSON)
 
-  //  val entities = resource.get(classOf[ClientResponse]).getEntity(classOf[TimelineEntities])
+    //  val entities = resource.get(classOf[ClientResponse]).getEntity(classOf[TimelineEntities])
     val bus = new SparkListenerBus() { }
     val appListener = new ApplicationEventListener()
     bus.addListener(appListener)
@@ -137,10 +137,10 @@ class ATSHistoryProvider(conf: SparkConf)
     }
     val events = entity.getEvents.flatMap(_.getEventInfo.values)
 
-      events.reverse.foreach { line =>
+    events.reverse.foreach { line =>
       //  val line = e.getEventInfo.asInstanceOf[String]
-        logInfo(line.asInstanceOf[String])
-        bus.postToAll(JsonProtocol.sparkEventFromJson(parse(line.asInstanceOf[String])))
+      logInfo(line.asInstanceOf[String])
+      bus.postToAll(JsonProtocol.sparkEventFromJson(parse(line.asInstanceOf[String])))
     }
     ui.setAppName(s"${appListener.appName.getOrElse(NOT_STARTED)} ($appId)")
 
@@ -154,7 +154,7 @@ class ATSHistoryProvider(conf: SparkConf)
   }
   override def getConfig(): Map[String, String] = {
     logInfo("getConfig ...:" +  timelineUri.resolve("/").toString())
-    Map(("Yarn Application Timeline Server" -> timelineUri.resolve("/").toString()))
+    Map(("Yarn Application History Server" -> timelineUri.resolve("/").toString()))
   }
 
   override def stop(): Unit = client.destroy()

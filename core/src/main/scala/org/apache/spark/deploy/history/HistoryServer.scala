@@ -180,7 +180,7 @@ object HistoryServer extends Logging {
     /* val providerName = conf.getOption("spark.history.provider")
       .getOrElse(classOf[FsHistoryProvider].getName())
       */
-    val providerName = "org.apache.spark.deploy.yarn.history.ATSHistoryProvider"
+    val providerName = "org.apache.spark.deploy.yarn.history.YarnHistoryProvider"
     val provider = Class.forName(providerName)
       .getConstructor(classOf[SparkConf])
       .newInstance(conf)

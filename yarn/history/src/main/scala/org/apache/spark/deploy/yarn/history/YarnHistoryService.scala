@@ -69,16 +69,17 @@ import org.json4s.JsonAST._
 
 import org.apache.spark.scheduler.SparkListenerEvent
 import org.apache.spark.util.JsonProtocol
-import org.apache.spark.deploy.yarn.timeline.TimedEvent
+import org.apache.spark.deploy.yarn.history.TimedEvent
 import scala.collection.mutable.LinkedList
-
+import org.apache.spark.scheduler.cluster.YarnService
+import java.util.concurrent.LinkedBlockingQueue
 
 class YarnHistoryService  extends AbstractService("ATS") with YarnService with Logging{
   logInfo("sparkContext: " + sc)
   var sc: SparkContext = _
   var appId: ApplicationId = _
   var timelineClient: Option[TimelineClient] = None
-  var listener: ATSSparkListener = _
+  var listener: YarnEventListener = _
   val ENTITY_TYPE = "SparkApplication"
   val PriFilter: String = null
   var appName: String = null
@@ -88,8 +89,6 @@ class YarnHistoryService  extends AbstractService("ATS") with YarnService with L
   var bEnd = false
   var batchSize: Int = 3
   var conf: Configuration = _
-
-  import java.util.concurrent.LinkedBlockingQueue
 
   // enqueue event to avoid blocking on main thread.
   private var eventQueue = new LinkedBlockingQueue[TimedEvent]
@@ -147,7 +146,7 @@ class YarnHistoryService  extends AbstractService("ATS") with YarnService with L
     // TezConfiguration.YARN_ATS_EVENT_FLUSH_TIMEOUT_MILLIS_DEFAULT)
   }
 
-  private def addShutdownHook() {
+  private def addShutdownHook(service: YarnHistoryService) {
     Runtime.getRuntime.addShutdownHook(new Thread("terminating logging service") {
       /* override def run(): Unit = Utils.logUncaughtExceptions {
         logInfo("Shutdown hook called")
@@ -156,7 +155,7 @@ class YarnHistoryService  extends AbstractService("ATS") with YarnService with L
       */
       override def run() = {
         logInfo("Shutdown hook called")
-        serviceStop
+        service.stop
       }
     })
   }
@@ -166,23 +165,13 @@ class YarnHistoryService  extends AbstractService("ATS") with YarnService with L
     sc = context
     appId = id
     logInfo("Starting ATS service ...")
-    addShutdownHook
+    addShutdownHook(this)
     init(sc.hadoopConfiguration)
-    start()
-    listener = new ATSSparkListener(sc, this)
+   // start()
+    listener = new YarnEventListener(sc, this)
     sc.listenerBus.addListener(listener)
     true
   }
-
-
-  def enqueue(event: TimedEvent) = {
-    if (!stopped.get()) {
-      eventQueue.add(event)
-    } else {
-      logWarning("ATS service stopped")
-    }
-  }
-
 
   override def serviceStart {
     eventHandlingThread = new Thread(new Runnable {
@@ -213,31 +202,19 @@ class YarnHistoryService  extends AbstractService("ATS") with YarnService with L
     eventHandlingThread.start
   }
 
-  private def stopATS(): Boolean = {
-    if (eventHandlingThread != null) {
-      eventHandlingThread.interrupt
-    }
-
-    logInfo("push out all events")
-    if (!eventQueue.isEmpty) {
-      val curTime: Long = System.currentTimeMillis()
-      if (maxTimeToWaitOnShutdown > 0) {
-        val endTime: Long = curTime + maxTimeToWaitOnShutdown
-        while (endTime >= System.currentTimeMillis()) {
-          val event = eventQueue.poll
-          handleEvent(event, true)
-        }
-      }
+  def enqueue(event: TimedEvent) = {
+    if (!stopped.get()) {
+      eventQueue.add(event)
     } else {
-      handleEvent(null, true)
+      logWarning("ATS service stopped")
     }
-    if (!eventQueue.isEmpty) {
-      logWarning("Did not finish flushing eventQueue before " +
-        "stopping ATSService, eventQueueBacklog=" + eventQueue.size)
-    }
-    stopTimelineClient
-    logInfo("ATS service terminated")
-    // new Throwable().printStackTrace()
+  }
+
+
+
+
+  private def stopATS(): Boolean = {
+   stop
     true
   }
 
@@ -248,8 +225,33 @@ class YarnHistoryService  extends AbstractService("ATS") with YarnService with L
         System.currentTimeMillis()))
     }
     if (!stopped.getAndSet(true)) {
-      stopATS
-      stop
+      if (eventHandlingThread != null) {
+        eventHandlingThread.interrupt
+      }
+
+      logInfo("push out all events")
+      if (!eventQueue.isEmpty) {
+        val curTime: Long = System.currentTimeMillis()
+        if (maxTimeToWaitOnShutdown > 0) {
+          val endTime: Long = curTime + maxTimeToWaitOnShutdown
+          var event = eventQueue.poll
+          while (endTime >= System.currentTimeMillis() && event != null) {
+            handleEvent(event, true)
+            event = eventQueue.poll
+          }
+        }
+      } else {
+        //flush all entities
+        handleEvent(null, true)
+      }
+      if (!eventQueue.isEmpty) {
+        logWarning("Did not finish flushing eventQueue before " +
+          "stopping ATSService, eventQueueBacklog=" + eventQueue.size)
+      }
+      stopTimelineClient
+      logInfo("ATS service terminated")
+      // new Throwable().printStackTrace()
+      true
     }
   }
 

@@ -31,7 +31,7 @@ private[spark] class YarnClusterSchedulerBackend(
 
   override def start() {
     super.start()
-    YarnHistoryService.start(sc, ApplicationMaster.getAttempId.getApplicationId())
+    YarnService.start(sc, ApplicationMaster.getAttempId.getApplicationId())
     //val logService = new ATSHistoryLoggingService(sc, ApplicationMaster.getAttempId.getApplicationId())
     //logService.startATS
     totalExpectedExecutors = DEFAULT_NUMBER_EXECUTORS

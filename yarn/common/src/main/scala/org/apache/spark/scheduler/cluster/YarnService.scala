@@ -19,23 +19,32 @@ package org.apache.spark.scheduler.cluster
 
 import org.apache.hadoop.yarn.api.records.ApplicationId
 import org.apache.spark.{Logging, SparkContext}
+import org.apache.hadoop.service.AbstractService
 
-private [spark] trait YarnService {
-  def start(sc: SparkContext, appId: ApplicationId): Boolean
+private [spark] trait YarnService extends AbstractService {
+    // For Yarn services, SparkContext, and ApplicationId is the basic info required.
+    // May change upon new services added.
+    def start(sc: SparkContext, appId: ApplicationId): Boolean
 }
 
-private[spark] object YarnService {
+private[spark] object YarnService extends Logging{
+  var service: YarnService = null
   def start(sc: SparkContext, appId: ApplicationId) {
-    val service: YarnService = null
     try {
       service = Class.forName("org.apache.spark.deploy.yarn.history.YarnHistoryService")
         .newInstance()
         .asInstanceOf[YarnService]
-      service.start
+      service.start(sc, appId)
+
     } catch {
       case e: Exception =>
-        logWarning("Cannot instantiate Yarn service client.", e)
+        logWarning("Cannot instantiate Yarn service.", e)
     }
+  }
+
+  //stop all services
+  def stop() {
+    service.stop
   }
 }
 

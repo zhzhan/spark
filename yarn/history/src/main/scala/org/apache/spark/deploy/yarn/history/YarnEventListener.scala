@@ -21,22 +21,15 @@ import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.scheduler.SchedulingMode.SchedulingMode
 import org.apache.spark.scheduler.SchedulingMode._
 import org.apache.spark.storage.BlockManagerId
-// import org.apache.spark.ui.jobs.UIData.{ExecutorSummary, TaskUIData, StageUIData}
 import org.apache.spark._
 import org.apache.spark.scheduler._
 
 import scala.collection.mutable.{ListBuffer, HashMap}
 
-/**
- * Created by zzhang on 8/4/14.
- */
-
-
 case class TimedEvent(sparkEvent: SparkListenerEvent, time: Long)
 
-class ATSSparkListener(sc: SparkContext, service: ATSHistoryLoggingService)
+class YarnEventListener(sc: SparkContext, service: YarnHistoryService)
   extends SparkListener with Logging {
-
 
   /**
    * Called when a stage completes successfully or fails, with information on the completed stage.
@@ -141,7 +134,7 @@ class ATSSparkListener(sc: SparkContext, service: ATSHistoryLoggingService)
 
 }
 
-private object ATSSparkListener {
+private object YarnEventListener {
   val DEFAULT_POOL_NAME = "default"
   val DEFAULT_RETAINED_STAGES = 1000
 }
