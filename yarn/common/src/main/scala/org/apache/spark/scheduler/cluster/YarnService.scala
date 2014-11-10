@@ -20,31 +20,47 @@ package org.apache.spark.scheduler.cluster
 import org.apache.hadoop.yarn.api.records.ApplicationId
 import org.apache.spark.{Logging, SparkContext}
 import org.apache.hadoop.service.AbstractService
+import scala.collection.mutable.LinkedList
 
-private [spark] trait YarnService extends AbstractService {
-    // For Yarn services, SparkContext, and ApplicationId is the basic info required.
-    // May change upon new services added.
-    def start(sc: SparkContext, appId: ApplicationId): Boolean
+private [spark] trait YarnService {
+  // For Yarn services, SparkContext, and ApplicationId is the basic info required.
+  // May change upon new services added.
+  def start(sc: SparkContext, appId: ApplicationId): Boolean
+  def stop: Unit
 }
 
-private[spark] object YarnService extends Logging{
-  var service: YarnService = null
+private[spark] object YarnServices extends Logging{
+  var services: LinkedList[YarnService] = _
   def start(sc: SparkContext, appId: ApplicationId) {
     try {
-      service = Class.forName("org.apache.spark.deploy.yarn.history.YarnHistoryService")
-        .newInstance()
-        .asInstanceOf[YarnService]
-      service.start(sc, appId)
-
+      services = new LinkedList[YarnService]
+      val sServices = sc.getConf.get("spark.yarn.services")
+      val sClasses = sServices.split(",")
+      sClasses.foreach {
+        sClass => {
+          try {
+            val instance = Class.forName(sClass)
+              .newInstance()
+              .asInstanceOf[YarnService]
+            instance.start(sc, appId)
+            services :+= instance
+            logInfo("Service " + sClass + " started")
+          } catch {
+            case e: Exception =>
+              logWarning("Cannot start Yarn service $sClass ", e)
+          }
+        }
+      }
     } catch {
       case e: Exception =>
-        logWarning("Cannot instantiate Yarn service.", e)
+        logWarning("No Yarn Services defined", e)
     }
   }
-
   //stop all services
   def stop() {
-    service.stop
+    if (services != null) {
+      services.foreach(_.stop)
+    }
   }
 }
 
