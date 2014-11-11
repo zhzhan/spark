@@ -46,12 +46,11 @@ import org.apache.hadoop.yarn.api.records.timeline.{TimelineEntity, TimelineEven
 class YarnHistoryProvider(conf: SparkConf)
   extends ApplicationHistoryProvider with Logging {
 
-  logInfo("Initiating ATSHistoryProvider ...")
   private val yarnConf = new YarnConfiguration()
   private val NOT_STARTED = "<Not Started>"
 
   // Copied from Yarn's TimelineClientImpl.java.
-  private val RESOURCE_URI_STR = s"/ws/v1/timeline/SparkApplication"
+  private val RESOURCE_URI_STR = s"/ws/v1/timeline/${YarnHistoryService.ENTITY_TYPE}"
 
   private val timelineUri = {
     val isHttps = YarnConfiguration.useHttps(yarnConf)
@@ -76,15 +75,6 @@ class YarnHistoryProvider(conf: SparkConf)
       .getEntity(classOf[TimelineEntities])
     logInfo(entities.toString)
 
-    /**
-     * private[spark] case class ApplicationHistoryInfo(
-    id: String,
-    name: String,
-    startTime: Long,
-    endTime: Long,
-    lastUpdated: Long,
-    sparkUser: String)
-     */
     entities.getEntities().flatMap { en =>
       try {
         Some(ApplicationHistoryInfo(en.getEntityId(),
@@ -120,11 +110,6 @@ class YarnHistoryProvider(conf: SparkConf)
       .get(classOf[ClientResponse])
       .getEntity(classOf[TimelineEntity])
     logInfo(entity.toString)
-    // logInfo("eventsUri: " + eventsUri)
-    // val resource = client.resource(eventsUri)
-    //  .queryParam("entityId", appId)
-    //  .accept(MediaType.APPLICATION_JSON)
-
     //  val entities = resource.get(classOf[ClientResponse]).getEntity(classOf[TimelineEntities])
     val bus = new SparkListenerBus() { }
     val appListener = new ApplicationEventListener()

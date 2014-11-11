@@ -23,8 +23,10 @@ import java.util.{HashMap => JHashMap}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.service.AbstractService
 import org.apache.hadoop.yarn.api.records.ApplicationId
-import org.apache.hadoop.yarn.api.records.timeline.{TimelineEntity, TimelineEvent, TimelinePutResponse}
+import org.apache.hadoop.yarn.api.records.timeline.{TimelineEntity,
+  TimelineEvent, TimelinePutResponse}
 import org.apache.hadoop.yarn.client.api.TimelineClient
+import org.apache.hadoop.yarn.conf.YarnConfiguration
 import org.apache.spark.deploy.yarn.history.TimestampEvent
 import org.apache.spark.scheduler.cluster.YarnService
 import org.apache.spark.scheduler._
@@ -35,17 +37,17 @@ import scala.collection.mutable.LinkedList
 
 import scala.collection.JavaConversions._
 
-class YarnHistoryService  extends AbstractService("ATS") with YarnService with Logging{
-  logInfo("sparkContext: " + sc)
+class YarnHistoryService  extends AbstractService("ATS")
+  with YarnService with Logging {
+
   private var sc: SparkContext = _
   private var appId: ApplicationId = _
   private var timelineClient: Option[TimelineClient] = None
   private var listener: YarnEventListener = _
-  private val ENTITY_TYPE = "SparkApplication"
   private var appName: String = null
   private var userName: String = null
   private var startTime: Long = _
-  private var bEnd = false
+
   private var batchSize: Int = 3
 
   // enqueue event to avoid blocking on main thread.
@@ -54,20 +56,21 @@ class YarnHistoryService  extends AbstractService("ATS") with YarnService with L
   private var entityList = new LinkedList[TimelineEntity]
   private var curEntity: Option[TimelineEntity] = None
   // Do we have enough information filled for the entity
-  private var bInit = false
+  private var bAppStart = false
+  private var bAppEnd = false
   // How many event we saved
   private var curEventNum = 0
   private var eventsProcessed: Int = 0
   private var eventHandlingThread: Thread = null
-  private var stopped: AtomicBoolean = new AtomicBoolean(false)
+  private var stopped: AtomicBoolean = new AtomicBoolean(true)
   private final val lock: AnyRef = new AnyRef
   private var maxTimeToWaitOnShutdown: Long = 1000L
-  private var clientCreateNum = 0
+  private var clientFailure = 0
 
 
   def createTimelineClient = {
-    clientCreateNum += 1
-    logInfo("Creating timelineClient " + clientCreateNum)
+    clientFailure += 1
+    logInfo("Creating timelineClient " + clientFailure)
     val client = TimelineClient.createTimelineClient()
     client.init(sc.hadoopConfiguration)
     client.start
@@ -86,7 +89,19 @@ class YarnHistoryService  extends AbstractService("ATS") with YarnService with L
     timelineClient = None
   }
 
-  def start(context: SparkContext, id: ApplicationId): Boolean = {
+  def start(context: SparkContext, id: ApplicationId): Unit = {
+    // Check that the configuration points at an AHS, otherwise the client code will
+    // not be able to connect.
+    val yarnConf = new YarnConfiguration(context.hadoopConfiguration)
+    if (!yarnConf.getBoolean(YarnConfiguration.TIMELINE_SERVICE_ENABLED,
+      YarnConfiguration.DEFAULT_TIMELINE_SERVICE_ENABLED)) {
+      logInfo("Yarn timeline service not available, disabling client.")
+      return
+    }
+    if (!stopped.get()) {
+      return
+    }
+    stopped.set(false)
     sc = context
     appId = id
     addShutdownHook(this)
@@ -95,7 +110,6 @@ class YarnHistoryService  extends AbstractService("ATS") with YarnService with L
     listener = new YarnEventListener(sc, this)
     sc.listenerBus.addListener(listener)
     logInfo("History service started")
-    true
   }
 
   override def serviceInit(conf: Configuration) {
@@ -142,13 +156,14 @@ class YarnHistoryService  extends AbstractService("ATS") with YarnService with L
 
   override def serviceStop {
     logInfo("Stopping ATS service")
-    if (!bEnd) {
-      eventQueue.add(new TimestampEvent(SparkListenerApplicationEnd(System.currentTimeMillis()),
-        System.currentTimeMillis()))
-    }
+
     if (!stopped.getAndSet(true)) {
       if (eventHandlingThread != null) {
         eventHandlingThread.interrupt
+      }
+      if (!bAppEnd) {
+        eventQueue.add(new TimestampEvent(SparkListenerApplicationEnd(System.currentTimeMillis()),
+          System.currentTimeMillis()))
       }
       logInfo("push out all events")
       if (!eventQueue.isEmpty) {
@@ -172,7 +187,6 @@ class YarnHistoryService  extends AbstractService("ATS") with YarnService with L
       stopTimelineClient
       logInfo("ATS service terminated")
       // new Throwable().printStackTrace()
-      true
     }
   }
 
@@ -181,9 +195,9 @@ class YarnHistoryService  extends AbstractService("ATS") with YarnService with L
       val entity: TimelineEntity = new TimelineEntity
       logInfo("Create new entity")
       curEventNum = 0
-      entity.setEntityType(ENTITY_TYPE)
+      entity.setEntityType(YarnHistoryService.ENTITY_TYPE)
       entity.setEntityId(appId.toString)
-      if (bInit) {
+      if (bAppStart) {
         entity.addPrimaryFilter("appName", appName)
         entity.addPrimaryFilter("appUser", userName)
         entity.addOtherInfo("appName", appName)
@@ -263,29 +277,32 @@ class YarnHistoryService  extends AbstractService("ATS") with YarnService with L
             // we already have all information,
             // flush it for old one to switch to new one
             logInfo("Receive application start event: " + event)
-            // flush this entity
+            // flush old entity
             entityList :+= curEntity.getOrElse(null)
             curEntity = None
             appName =start.appName;
             userName = start.sparkUser
             startTime = start.time
-            bInit = true
             val en = getCurrentEntity
             en.addPrimaryFilter("startApp", "newApp")
             push = true
+            bAppStart = true
+            bAppEnd = false
           case end: SparkListenerApplicationEnd =>
-            if (!bEnd) {
+            if (!bAppEnd) {
               // we already have all information,
               // flush it for old one to switch to new one
               logInfo("Receive application end event: " + event)
-              // flush this entity
+              // flush old entity
               entityList :+= curEntity.getOrElse(null)
               curEntity = None
-              bEnd = true
+
               val en = getCurrentEntity
               en.addPrimaryFilter("endApp", "oldApp")
               en.addOtherInfo("startTime", startTime)
               en.addOtherInfo("endTime", end.time)
+              bAppEnd = true
+              bAppStart = false
               push = true
             }
           case _ =>
@@ -308,4 +325,8 @@ class YarnHistoryService  extends AbstractService("ATS") with YarnService with L
       flushEntity()
     }
   }
+}
+
+object YarnHistoryService {
+  val ENTITY_TYPE = "SparkApplication"
 }

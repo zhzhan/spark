@@ -24,35 +24,34 @@ import scala.collection.mutable.LinkedList
 private [spark] trait YarnService {
   // For Yarn services, SparkContext, and ApplicationId is the basic info required.
   // May change upon new services added.
-  def start(sc: SparkContext, appId: ApplicationId): Boolean
+  def start(sc: SparkContext, appId: ApplicationId): Unit
   def stop: Unit
 }
 
 private[spark] object YarnServices extends Logging{
   var services: LinkedList[YarnService] = _
   def start(sc: SparkContext, appId: ApplicationId) {
-    try {
-      services = new LinkedList[YarnService]
-      val sServices = sc.getConf.get("spark.yarn.services")
-      val sClasses = sServices.split(",")
-      sClasses.foreach {
-        sClass => {
-          try {
-            val instance = Class.forName(sClass)
-              .newInstance()
-              .asInstanceOf[YarnService]
-            instance.start(sc, appId)
-            services :+= instance
-            logInfo("Service " + sClass + " started")
-          } catch {
-            case e: Exception =>
-              logWarning("Cannot start Yarn service $sClass ", e)
+    val sNames = sc.getConf.getOption("spark.yarn.services")
+    sNames match {
+      case Some(names) =>
+        services = new LinkedList[YarnService]
+        val sClasses = names.split(",")
+        sClasses.foreach {
+          sClass => {
+            try {
+              val instance = Class.forName(sClass)
+                .newInstance()
+                .asInstanceOf[YarnService]
+              instance.start(sc, appId)
+              services :+= instance
+              logInfo("Service " + sClass + " started")
+            } catch {
+              case e: Exception =>
+                logWarning("Cannot start Yarn service $sClass ", e)
+            }
           }
         }
-      }
-    } catch {
-      case e: Exception =>
-        logWarning("No Yarn Services defined", e)
+      case _ =>
     }
   }
   //stop all services
