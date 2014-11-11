@@ -17,16 +17,10 @@
 
 package org.apache.spark.deploy.yarn.history
 
-import org.apache.spark.executor.TaskMetrics
-import org.apache.spark.scheduler.SchedulingMode.SchedulingMode
-import org.apache.spark.scheduler.SchedulingMode._
-import org.apache.spark.storage.BlockManagerId
-import org.apache.spark._
+import org.apache.spark.{Logging, SparkContext}
 import org.apache.spark.scheduler._
 
-import scala.collection.mutable.{ListBuffer, HashMap}
-
-case class TimedEvent(sparkEvent: SparkListenerEvent, time: Long)
+case class TimestampEvent(sparkEvent: SparkListenerEvent, time: Long)
 
 class YarnEventListener(sc: SparkContext, service: YarnHistoryService)
   extends SparkListener with Logging {
@@ -35,21 +29,21 @@ class YarnEventListener(sc: SparkContext, service: YarnHistoryService)
    * Called when a stage completes successfully or fails, with information on the completed stage.
    */
   override def onStageCompleted(stageCompleted: SparkListenerStageCompleted) {
-    service.enqueue(new TimedEvent(stageCompleted, System.currentTimeMillis))
+    service.enqueue(new TimestampEvent(stageCompleted, System.currentTimeMillis))
   }
 
   /**
    * Called when a stage is submitted
    */
   override def onStageSubmitted(stageSubmitted: SparkListenerStageSubmitted) {
-    service.enqueue(new TimedEvent(stageSubmitted, System.currentTimeMillis))
+    service.enqueue(new TimestampEvent(stageSubmitted, System.currentTimeMillis))
   }
 
   /**
    * Called when a task starts
    */
   override def onTaskStart(taskStart: SparkListenerTaskStart) {
-    service.enqueue(new TimedEvent(taskStart, System.currentTimeMillis))
+    service.enqueue(new TimestampEvent(taskStart, System.currentTimeMillis))
   }
 
   /**
@@ -57,21 +51,21 @@ class YarnEventListener(sc: SparkContext, service: YarnHistoryService)
    * not need to fetch the result remotely).
    */
   override def onTaskGettingResult(taskGettingResult: SparkListenerTaskGettingResult) {
-    service.enqueue(new TimedEvent(taskGettingResult, System.currentTimeMillis))
+    service.enqueue(new TimestampEvent(taskGettingResult, System.currentTimeMillis))
   }
 
   /**
    * Called when a task ends
    */
   override def onTaskEnd(taskEnd: SparkListenerTaskEnd) {
-    service.enqueue(new TimedEvent(taskEnd, System.currentTimeMillis))
+    service.enqueue(new TimestampEvent(taskEnd, System.currentTimeMillis))
   }
 
   /**
    * Called when a job starts
    */
   override def onJobStart(jobStart: SparkListenerJobStart) {
-    service.enqueue(new TimedEvent(jobStart, System.currentTimeMillis))
+    service.enqueue(new TimestampEvent(jobStart, System.currentTimeMillis))
   }
 
 
@@ -79,62 +73,55 @@ class YarnEventListener(sc: SparkContext, service: YarnHistoryService)
    * Called when a job ends
    */
   override def onJobEnd(jobEnd: SparkListenerJobEnd) {
-    service.enqueue(new TimedEvent(jobEnd, System.currentTimeMillis))
+    service.enqueue(new TimestampEvent(jobEnd, System.currentTimeMillis))
   }
 
   /**
    * Called when environment properties have been updated
    */
   override def onEnvironmentUpdate(environmentUpdate: SparkListenerEnvironmentUpdate) {
-    service.enqueue(new TimedEvent(environmentUpdate, System.currentTimeMillis))
+    service.enqueue(new TimestampEvent(environmentUpdate, System.currentTimeMillis))
   }
 
   /**
    * Called when a new block manager has joined
    */
   override def onBlockManagerAdded(blockManagerAdded: SparkListenerBlockManagerAdded) {
-    service.enqueue(new TimedEvent(blockManagerAdded, System.currentTimeMillis))
+    service.enqueue(new TimestampEvent(blockManagerAdded, System.currentTimeMillis))
   }
 
   /**
    * Called when an existing block manager has been removed
    */
   override def onBlockManagerRemoved(blockManagerRemoved: SparkListenerBlockManagerRemoved) {
-    service.enqueue(new TimedEvent(blockManagerRemoved, System.currentTimeMillis))
+    service.enqueue(new TimestampEvent(blockManagerRemoved, System.currentTimeMillis))
   }
 
   /**
    * Called when an RDD is manually unpersisted by the application
    */
   override def onUnpersistRDD(unpersistRDD: SparkListenerUnpersistRDD) {
-    service.enqueue(new TimedEvent(unpersistRDD, System.currentTimeMillis))
+    service.enqueue(new TimestampEvent(unpersistRDD, System.currentTimeMillis))
   }
 
   /**
    * Called when the application starts
    */
   override def onApplicationStart(applicationStart: SparkListenerApplicationStart) {
-    service.enqueue(new TimedEvent(applicationStart, System.currentTimeMillis))
+    service.enqueue(new TimestampEvent(applicationStart, System.currentTimeMillis))
   }
 
   /**
    * Called when the application ends
    */
   override def onApplicationEnd(applicationEnd: SparkListenerApplicationEnd) {
-    service.enqueue(new TimedEvent(applicationEnd, System.currentTimeMillis))
+    service.enqueue(new TimestampEvent(applicationEnd, System.currentTimeMillis))
   }
 
   /**
    * Called when the driver receives task metrics from an executor in a heartbeat.
    */
   override def onExecutorMetricsUpdate(executorMetricsUpdate: SparkListenerExecutorMetricsUpdate) {
-    service.enqueue(new TimedEvent(executorMetricsUpdate, System.currentTimeMillis))
+    service.enqueue(new TimestampEvent(executorMetricsUpdate, System.currentTimeMillis))
   }
-
-
-}
-
-private object YarnEventListener {
-  val DEFAULT_POOL_NAME = "default"
-  val DEFAULT_RETAINED_STAGES = 1000
 }

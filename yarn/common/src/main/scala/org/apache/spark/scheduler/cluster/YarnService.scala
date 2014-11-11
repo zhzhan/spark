@@ -19,7 +19,6 @@ package org.apache.spark.scheduler.cluster
 
 import org.apache.hadoop.yarn.api.records.ApplicationId
 import org.apache.spark.{Logging, SparkContext}
-import org.apache.hadoop.service.AbstractService
 import scala.collection.mutable.LinkedList
 
 private [spark] trait YarnService {
