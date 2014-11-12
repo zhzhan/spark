@@ -220,24 +220,16 @@ class HadoopRDD[K, V](
 
       val split = theSplit.asInstanceOf[HadoopPartition]
       logInfo("Input split: " + split.inputSplit)
-      var reader: RecordReader[K, V] = null
       val jobConf = getJobConf()
-      val inputFormat = getInputFormat(jobConf)
-      HadoopRDD.addLocalConfiguration(new SimpleDateFormat("yyyyMMddHHmm").format(createTime),
-        context.stageId, theSplit.index, context.attemptId.toInt, jobConf)
-      val columns = jobConf.get("hive.io.file.readcolumn.names")
-      val sargs = jobConf.get("sarg.pushdown")
-      logInfo("sargs: " + sargs + " columns " + columns)
-      reader = inputFormat.getRecordReader(split.inputSplit.value, jobConf, Reporter.NULL)
-
-
-      // Register an on-task-completion callback to close the input stream.
-      context.addTaskCompletionListener{ context => closeIfNeeded() }
-      val key: K = reader.createKey()
-      val value: V = reader.createValue()
+      if (true) {
+        val columns = jobConf.get("hive.io.file.readcolumn.names")
+        val sargs = jobConf.get("sarg.pushdown")
+        logInfo("sargs: " + sargs + " columns " + columns)
+      }
 
       val inputMetrics = new InputMetrics(DataReadMethod.Hadoop)
-      // Find a function that will return the FileSystem bytes read by this thread.
+      // Find a function that will return the FileSystem bytes read by this thread. Do this before
+      // creating RecordReader, because RecordReader's constructor might read some bytes
       val bytesReadCallback = if (split.inputSplit.value.isInstanceOf[FileSplit]) {
         SparkHadoopUtil.get.getFSBytesReadOnThreadCallback(
           split.inputSplit.value.asInstanceOf[FileSplit].getPath, jobConf)
@@ -247,6 +239,18 @@ class HadoopRDD[K, V](
       if (bytesReadCallback.isDefined) {
         context.taskMetrics.inputMetrics = Some(inputMetrics)
       }
+
+      var reader: RecordReader[K, V] = null
+      val inputFormat = getInputFormat(jobConf)
+      HadoopRDD.addLocalConfiguration(new SimpleDateFormat("yyyyMMddHHmm").format(createTime),
+        context.stageId, theSplit.index, context.attemptId.toInt, jobConf)
+      reader = inputFormat.getRecordReader(split.inputSplit.value, jobConf, Reporter.NULL)
+
+      // Register an on-task-completion callback to close the input stream.
+      context.addTaskCompletionListener{ context => closeIfNeeded() }
+      val key: K = reader.createKey()
+      val value: V = reader.createValue()
+
       var recordsSinceMetricsUpdate = 0
 
       override def getNext() = {

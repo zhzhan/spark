@@ -122,7 +122,7 @@ private[sql] object OrcFilters extends Logging {
         val b1 = builder.lessThan(right.name, left.value)
         Some(b1)
       }
-      //more investigation
+      // more test
       case p@EqualNullSafe(left: NamedExpression, right: NamedExpression) => {
         val b1 = builder.nullSafeEquals(left.name, right.name)
         Some(b1)

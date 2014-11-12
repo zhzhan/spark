@@ -30,11 +30,13 @@ import org.apache.hadoop.hive.serde2.typeinfo.{TypeInfoUtils, TypeInfo}
 import org.apache.spark.sql.hive.HiveShim
 import org.apache.hadoop.io.NullWritable
 import org.apache.hadoop.io.Writable
-import org.apache.hadoop.mapred.{SparkHadoopMapRedUtil, Reporter, JobConf}
-import org.apache.hadoop.mapreduce.{Job, TaskID, SparkHadoopMapReduceUtil}
+import org.apache.hadoop.mapred.{Reporter, JobConf}
+
+import org.apache.hadoop.mapreduce.{Job, TaskID}
 import org.apache.hadoop.mapreduce.lib.output.{FileOutputFormat, FileOutputCommitter}
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat
 import org.apache.spark.annotation.DeveloperApi
+import org.apache.spark.mapreduce.SparkHadoopMapReduceUtil
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.plans.logical.{UnaryNode => LogicalUnaryNode, LogicalPlan}
 import org.apache.spark.sql.catalyst.types.StructType
@@ -127,7 +129,7 @@ case class InsertIntoOrcTable(
       val output: Path = FileOutputFormat.getOutputPath(hadoopTaskContext)
       val committer = new FileOutputCommitter(output, hadoopTaskContext)
       val path = new Path(committer.getWorkPath, filename)
-      //avoid create empty file without schema attached
+      // avoid create empty file without schema attached
       if (iter.hasNext) {
         val fs = output.getFileSystem(wrappedConf.value)
         val writer = format.getRecordWriter(fs,
@@ -172,26 +174,6 @@ case class OrcTableScan(
     val names = attributes.map(_.name)
     val sorted = ids.zip(names).sorted
     HiveShim.appendReadColumns(conf, sorted.map(_._1), sorted.map(_._2))
-
-  //  val sortedNames = ids.zip(names).sorted.map(_.2)
-    // Use HiveShim to support hive-0.13.1 after spark-2706 going to upstream
-   // HiveShim.appendReadColumns(conf, sorted.map(_._1), sorted.map(_._2))
-    /*
-    if (ORC_FILTER_PUSHDOWN_ENABLED && ORC_PUSHDOWN) {
-      HiveShim.appendReadColumns(conf, sorted.map(_._1), sorted.map(_._2))
-    } else {
-      HiveShim.appendReadColumns(conf, sorted.map(_._1), null)
-    }*/
-    //ORC_PUSHDOWN = false
-    /*
-    if (ids != null && ids.size > 0) {
-      ColumnProjectionUtils.appendReadColumnIDs(conf, ids)
-    }
-    val names = attributes.map(_.name)
-    if (names != null && names.size > 0) {
-      ColumnProjectionUtils.appendReadColumnNames(conf, names)
-    }
-    */
   }
 
   // Transform all given raw `Writable`s into `Row`s.
@@ -233,7 +215,7 @@ case class OrcTableScan(
   }
   override def execute(): RDD[Row] = {
     val sc = sqlContext.sparkContext
-    val job = new Job(OrcRelation.jobConf)//sc.hadoopConfiguration)
+    val job = new Job(OrcRelation.jobConf)
     val conf: Configuration = job.getConfiguration
     val fileList = OrcFileOperator.listOrcFiles(relation.path, conf)
     addColumnIds(output, relation, conf)
