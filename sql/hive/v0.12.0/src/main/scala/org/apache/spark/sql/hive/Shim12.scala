@@ -18,13 +18,16 @@
 package org.apache.spark.sql.hive
 
 import java.net.URI
-import java.util.{ArrayList => JArrayList}
+import java.util.{ArrayList => JArrayList, Map=>JMap}
 import java.util.Properties
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.hive.common.`type`.HiveDecimal
 import org.apache.hadoop.hive.conf.HiveConf
+import org.apache.hadoop.hive.conf.HiveConf.ConfVars
 import org.apache.hadoop.hive.ql.Context
+import org.apache.hadoop.hive.ql.io.sarg.SearchArgument
+import org.apache.hadoop.hive.ql.io.sarg.SearchArgument.Builder
 import org.apache.hadoop.hive.ql.metadata.{Hive, Partition, Table}
 import org.apache.hadoop.hive.ql.plan.{CreateTableDesc, FileSinkDesc, TableDesc}
 import org.apache.hadoop.hive.ql.processors._
@@ -184,6 +187,33 @@ private[hive] object HiveShim {
 
   def toCatalystDecimal(hdoi: HiveDecimalObjectInspector, data: Any): Decimal = {
     Decimal(hdoi.getPrimitiveJavaObject(data).bigDecimalValue())
+  }
+  def getDefaultPartitionName = ConfVars.DEFAULTPARTITIONNAME.defaultVal
+
+  def getBuilder: Builder = SearchArgument.FACTORY.newBuilder()
+
+
+  def loadPartition(db: Hive, loadPath: Path, tableName: String,
+                    partSpec: JMap[String, String], replace: Boolean, holdDDLTime: Boolean,
+                    inheritTableSpecs: Boolean, isSkewedStoreAsSubdir: Boolean,
+                    isSrcLocal: Boolean, isAcid: Boolean) = {
+    db.loadPartition(loadPath, tableName, partSpec, replace, holdDDLTime,
+      inheritTableSpecs, isSkewedStoreAsSubdir)
+
+  }
+  def loadTable(db: Hive, loadPath: Path, tableName: String, replace: Boolean,
+                holdDDLTime: Boolean, isSrcLocal: Boolean, isSkewedStoreAsSubdir: Boolean,
+                isAcid: Boolean) = {
+    db.loadTable(loadPath, tableName, replace, holdDDLTime)
+
+  }
+
+  def loadDynamicPartitions(db: Hive, loadPath: Path, tableName: String,
+                            partSpec: JMap[String, String], replace: Boolean, numP: Int, holdDDLTime: Boolean,
+                            isSkewedStoreAsSubdir: Boolean,
+                            listBucketingEnabled: Boolean, isAcid: Boolean) = {
+    db.loadDynamicPartitions(loadPath, tableName, partSpec, replace, numP, holdDDLTime,
+      isSkewedStoreAsSubdir)
   }
 }
 

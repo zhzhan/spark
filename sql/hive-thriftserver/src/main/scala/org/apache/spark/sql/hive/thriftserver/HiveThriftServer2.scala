@@ -20,7 +20,8 @@ package org.apache.spark.sql.hive.thriftserver
 import org.apache.commons.logging.LogFactory
 import org.apache.hadoop.hive.conf.HiveConf
 import org.apache.hive.service.cli.thrift.ThriftBinaryCLIService
-import org.apache.hive.service.server.{HiveServer2, ServerOptionsProcessor}
+import org.apache.hive.service.server.{HiveServer2}
+
 
 import org.apache.spark.Logging
 import org.apache.spark.annotation.DeveloperApi
@@ -47,10 +48,7 @@ object HiveThriftServer2 extends Logging {
 
 
   def main(args: Array[String]) {
-    val optionsProcessor = new ServerOptionsProcessor("HiveThriftServer2")
-    if (!optionsProcessor.process(args)) {
-      System.exit(-1)
-    }
+    HiveThriftServerShim.init(args)
 
     logInfo("Starting SparkContext")
     SparkSQLEnv.init()
@@ -81,7 +79,7 @@ private[hive] class HiveThriftServer2(hiveContext: HiveContext)
   with ReflectedCompositeService {
 
   override def init(hiveConf: HiveConf) {
-    val sparkSqlCliService = new SparkSQLCLIService(hiveContext)
+    val sparkSqlCliService = new SparkSQLCLIService(hiveContext, this)
     setSuperField(this, "cliService", sparkSqlCliService)
     addService(sparkSqlCliService)
 

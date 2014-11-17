@@ -31,6 +31,8 @@ import org.apache.hadoop.security.UserGroupInformation
 import org.apache.hive.service.cli._
 import org.apache.hive.service.cli.operation.ExecuteStatementOperation
 import org.apache.hive.service.cli.session.HiveSession
+import org.apache.hive.service.cli.session.SessionManager
+import org.apache.hive.service.server.{HiveServer2, ServerOptionsProcessor}
 
 import org.apache.spark.Logging
 import org.apache.spark.sql.catalyst.plans.logical.SetCommand
@@ -42,12 +44,26 @@ import org.apache.spark.sql.{SQLConf, SchemaRDD, Row => SparkRow}
 /**
  * A compatibility layer for interacting with Hive version 0.12.0.
  */
+private[hive] class SparkCLIService(hiveServer2: HiveServer2)
+  extends CLIService {
+}
+
+private[hive] class SparkSessionManager(hiveServer2: HiveServer2)
+  extends SessionManager {
+}
 private[thriftserver] object HiveThriftServerShim {
   val version = "0.12.0"
 
   def setServerUserName(sparkServiceUGI: UserGroupInformation, sparkCliService:SparkSQLCLIService) = {
     val serverUserName = ShimLoader.getHadoopShims.getShortUserName(sparkServiceUGI)
     setSuperField(sparkCliService, "serverUserName", serverUserName)
+  }
+
+  def init(args: Array[String]) = {
+    val optionsProcessor = new ServerOptionsProcessor("HiveThriftServer2")
+    if (!optionsProcessor.process(args)) {
+      System.exit(-1)
+    }
   }
 }
 

@@ -18,16 +18,17 @@
 package org.apache.spark.sql.hive.orc
 
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.hadoop.hive.ql.io.sarg.SearchArgument
+import org.apache.hadoop.hive.ql.io.sarg.{SearchArgument}
 import org.apache.hadoop.hive.ql.io.sarg.SearchArgument.Builder
 import org.apache.spark.Logging
+import org.apache.spark.sql.hive.HiveShim
 
 private[sql] object OrcFilters extends Logging {
 
   def createFilter(expr: Seq[Expression]): Option[SearchArgument] = {
     var exist = false
     if (expr == null || expr.size == 0) return None
-    var sarg: Option[Builder] = Some(SearchArgument.FACTORY.newBuilder())
+    var sarg: Option[Builder] = Some(HiveShim.getBuilder)
     sarg.get.startAnd()
     expr.foreach {
       x => {
