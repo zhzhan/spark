@@ -44,14 +44,6 @@ import org.apache.spark.sql.hive.thriftserver.ReflectionUtils._
 import org.apache.spark.sql.hive.{HiveContext, HiveMetastoreTypes}
 import org.apache.spark.sql.{SchemaRDD, Row => SparkRow}
 
-private[hive] class SparkCLIService(hiveServer2: HiveServer2)
-  extends CLIService(hiveServer2) {
-}
-
-private[hive] class SparkSessionManager(hiveServer2: HiveServer2)
-  extends SessionManager(hiveServer2) {
-}
-
 /**``
  * A compatibility layer for interacting with Hive version 0.12.0.
  */

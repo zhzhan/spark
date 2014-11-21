@@ -38,7 +38,7 @@ import org.apache.spark.sql.hive.thriftserver.ReflectionUtils._
 import org.apache.spark.util.Utils
 
 private[hive] class SparkSQLCLIService(hiveContext: HiveContext, hiveServer2: HiveServer2)
-  extends SparkCLIService(hiveServer2)
+  extends CLIService(hiveServer2)
   with ReflectedCompositeService {
 
   override def init(hiveConf: HiveConf) {

@@ -18,7 +18,7 @@
 package org.apache.spark.sql.hive.thriftserver
 
 import java.security.PrivilegedExceptionAction
-import java.sql.Timestamp
+import java.sql.{Date, Timestamp}
 import java.util.concurrent.Future
 import java.util.{ArrayList => JArrayList, List => JList, Map => JMap}
 
@@ -47,13 +47,6 @@ import org.apache.spark.sql.{SchemaRDD, Row => SparkRow}
 /**
  * A compatibility layer for interacting with Hive version 0.12.0.
  */
-private[hive] class SparkCLIService(hiveServer2: HiveServer2)
-  extends CLIService {
-}
-
-private[hive] class SparkSessionManager(hiveServer2: HiveServer2)
-  extends SessionManager {
-}
 
 private[thriftserver] object HiveThriftServerShim {
   val version = "0.13.1"
@@ -130,7 +123,7 @@ private[hive] class SparkExecuteStatementOperation(
   def addNonNullColumnValue(from: SparkRow, to: ArrayBuffer[Any],  ordinal: Int) {
     dataTypes(ordinal) match {
       case StringType =>
-        to += from.get(ordinal).asInstanceOf[String]
+        to += from.getString(ordinal)
       case IntegerType =>
         to += from.getInt(ordinal)
       case BooleanType =>
@@ -140,23 +133,20 @@ private[hive] class SparkExecuteStatementOperation(
       case FloatType =>
         to += from.getFloat(ordinal)
       case DecimalType() =>
-        to += from.get(ordinal).asInstanceOf[BigDecimal].bigDecimal
+        to += from.getAs[BigDecimal](ordinal).bigDecimal
       case LongType =>
         to += from.getLong(ordinal)
       case ByteType =>
         to += from.getByte(ordinal)
       case ShortType =>
         to += from.getShort(ordinal)
+      case DateType =>
+        to += from.getAs[Date](ordinal)
       case TimestampType =>
-        to +=  from.get(ordinal).asInstanceOf[Timestamp]
-      case BinaryType =>
-        to += from.get(ordinal).asInstanceOf[String]
-      case _: ArrayType =>
-        to += from.get(ordinal).asInstanceOf[String]
-      case _: StructType =>
-        to += from.get(ordinal).asInstanceOf[String]
-      case _: MapType =>
-        to += from.get(ordinal).asInstanceOf[String]
+        to +=  from.getAs[Timestamp](ordinal)
+      case BinaryType | _: ArrayType | _: StructType | _: MapType =>
+        val hiveString = HiveContext.toHiveString((from.get(ordinal), dataTypes(ordinal)))
+        to += hiveString
     }
   }
 
@@ -164,9 +154,9 @@ private[hive] class SparkExecuteStatementOperation(
     validateDefaultFetchOrientation(order)
     assertState(OperationState.FINISHED)
     setHasResultSet(true)
-    val reultRowSet: RowSet = RowSetFactory.create(getResultSetSchema, getProtocolVersion)
+    val resultRowSet: RowSet = RowSetFactory.create(getResultSetSchema, getProtocolVersion)
     if (!iter.hasNext) {
-      reultRowSet
+      resultRowSet
     } else {
       // maxRowsL here typically maps to java.sql.Statement.getFetchSize, which is an int
       val maxRows = maxRowsL.toInt
@@ -183,10 +173,10 @@ private[hive] class SparkExecuteStatementOperation(
           }
           curCol += 1
         }
-        reultRowSet.addRow(row.toArray.asInstanceOf[Array[Object]])
+        resultRowSet.addRow(row.toArray.asInstanceOf[Array[Object]])
         curRow += 1
       }
-      reultRowSet
+      resultRowSet
     }
   }
 
