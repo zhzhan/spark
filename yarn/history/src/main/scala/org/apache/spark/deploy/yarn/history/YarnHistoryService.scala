@@ -278,7 +278,8 @@ class YarnHistoryService  extends AbstractService("ATS")
             // flush it for old one to switch to new one
             logInfo("Receive application start event: " + event)
             // flush old entity
-            entityList :+= curEntity.getOrElse(null)
+            curEntity.foreach(entityList :+= _)
+         //   entityList :+= curEntity.getOrElse(null)
             curEntity = None
             appName =start.appName;
             userName = start.sparkUser
@@ -294,7 +295,8 @@ class YarnHistoryService  extends AbstractService("ATS")
               // flush it for old one to switch to new one
               logInfo("Receive application end event: " + event)
               // flush old entity
-              entityList :+= curEntity.getOrElse(null)
+              curEntity.foreach(entityList :+= _)
+             // entityList :+= curEntity.getOrElse(null)
               curEntity = None
 
               val en = getCurrentEntity
@@ -318,7 +320,8 @@ class YarnHistoryService  extends AbstractService("ATS")
       }
       logInfo("current event num: " + curEventNum)
       if (curEventNum == batchSize || flush || push) {
-        entityList :+= curEntity.getOrElse(null)
+        curEntity.foreach(entityList :+= _)
+      //  entityList :+= curEntity.getOrElse(null)
         curEntity = None
         curEventNum = 0
       }

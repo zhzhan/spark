@@ -120,12 +120,12 @@
         <module>stable</module>
       </modules>
     </profile>
-    <profile>
+    <!--<profile>
       <id>yarn-history</id>
       <modules>
         <module>history</module>
       </modules>
-    </profile>
+    </profile>-->
   </profiles>
   <build>
     <plugins>

@@ -1314,7 +1314,7 @@
     <profile>
       <id>yarn-history</id>
       <modules>
-        <module>yarn-history</module>
+        <module>yarn/history</module>
       </modules>
     </profile>
 

@@ -32,6 +32,7 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.scheduler._
 import org.apache.spark.util.JsonProtocol
 
+/*
 class YarnHistorySuite extends FunSuite with BeforeAndAfter with Matchers {
 
   private val environmentUpdate = SparkListenerEnvironmentUpdate(Map[String, Seq[(String, String)]](
@@ -121,3 +122,4 @@ class YarnHistorySuite extends FunSuite with BeforeAndAfter with Matchers {
   }
 
 }
+*/
