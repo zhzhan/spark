@@ -38,12 +38,12 @@ object BuildCommons {
       "streaming-flume", "streaming-kafka", "streaming-mqtt", "streaming-twitter",
       "streaming-zeromq").map(ProjectRef(buildLocation, _))
 
-  val optionallyEnabledProjects@Seq(yarn, yarnStable, yarnAlpha, yarnHistory, networkYarn, java8Tests,
-    sparkGangliaLgpl, sparkKinesisAsl) = Seq("yarn", "yarn-stable", "yarn-alpha", "yarn-history", "network-yarn",
+  val optionallyEnabledProjects@Seq(yarn, yarnStable, yarnAlpha, yarnHistory, java8Tests,
+    sparkGangliaLgpl, sparkKinesisAsl) = Seq("yarn", "yarn-stable", "yarn-alpha", "yarn-history",
     "java8-tests", "ganglia-lgpl", "kinesis-asl").map(ProjectRef(buildLocation, _))
 
-  val assemblyProjects@Seq(assembly, examples) = Seq("assembly", "examples")
-    .map(ProjectRef(buildLocation, _))
+  val assemblyProjects@Seq(assembly, examples, networkYarn) =
+    Seq("assembly", "examples", "network-yarn").map(ProjectRef(buildLocation, _))
 
   val tools = ProjectRef(buildLocation, "tools")
   // Root project.
@@ -100,12 +100,14 @@ object SparkBuild extends PomBuild {
           "conjunction with environment variable.")
       v.split("(\\s+|,)").filterNot(_.isEmpty).map(_.trim.replaceAll("-P", "")).toSeq
     }
-    if (profiles.exists(_.contains("scala-"))) {
-      profiles
-    } else {
-      println("Enabled default scala profile")
-      profiles ++ Seq("scala-2.10")
+
+    if (System.getProperty("scala-2.11") == "") {
+      // To activate scala-2.11 profile, replace empty property value to non-empty value
+      // in the same way as Maven which handles -Dname as -Dname=true before executes build process.
+      // see: https://github.com/apache/maven/blob/maven-3.0.4/maven-embedder/src/main/java/org/apache/maven/cli/MavenCli.java#L1082
+      System.setProperty("scala-2.11", "true")
     }
+    profiles
   }
 
   Properties.envOrNone("SBT_MAVEN_PROPERTIES") match {
@@ -207,12 +209,14 @@ object OldDeps {
 
   def versionArtifact(id: String): Option[sbt.ModuleID] = {
     val fullId = id + "_2.10"
-    Some("org.apache.spark" % fullId % "1.1.0")
+    Some("org.apache.spark" % fullId % "1.2.0")
   }
 
   def oldDepsSettings() = Defaults.coreDefaultSettings ++ Seq(
     name := "old-deps",
     scalaVersion := "2.10.4",
+    // TODO: remove this as soon as 1.2.0 is published on Maven central.
+    resolvers += "spark-staging-1038" at "https://repository.apache.org/content/repositories/orgapachespark-1038/",
     retrieveManaged := true,
     retrievePattern := "[type]s/[artifact](-[revision])(-[classifier]).[ext]",
     libraryDependencies := Seq("spark-streaming-mqtt", "spark-streaming-zeromq",
@@ -289,8 +293,15 @@ object Assembly {
 
   lazy val settings = assemblySettings ++ Seq(
     test in assembly := {},
-    jarName in assembly <<= (version, moduleName) map { (v, mName) => mName + "-"+v + "-hadoop" +
-      Option(System.getProperty("hadoop.version")).getOrElse("1.0.4") + ".jar" },
+    jarName in assembly <<= (version, moduleName) map { (v, mName) =>
+      if (mName.contains("network-yarn")) {
+        // This must match the same name used in maven (see network/yarn/pom.xml)
+        "spark-" + v + "-yarn-shuffle.jar"
+      } else {
+        mName + "-" + v + "-hadoop" +
+          Option(System.getProperty("hadoop.version")).getOrElse("1.0.4") + ".jar"
+      }
+    },
     mergeStrategy in assembly := {
       case PathList("org", "datanucleus", xs @ _*)             => MergeStrategy.discard
       case m if m.toLowerCase.endsWith("manifest.mf")          => MergeStrategy.discard
@@ -321,7 +332,7 @@ object Unidoc {
     unidocProjectFilter in(ScalaUnidoc, unidoc) :=
       inAnyProject -- inProjects(OldDeps.project, repl, examples, tools, catalyst, streamingFlumeSink, yarn, yarnAlpha, yarnHistory),
     unidocProjectFilter in(JavaUnidoc, unidoc) :=
-      inAnyProject -- inProjects(OldDeps.project, repl, bagel, graphx, examples, tools, catalyst, streamingFlumeSink, yarn, yarnAlpha, yarnHistory),
+      inAnyProject -- inProjects(OldDeps.project, repl, bagel, examples, tools, catalyst, streamingFlumeSink, yarn, yarnAlpha, yarnHistory),
 
     // Skip class names containing $ and some internal packages in Javadocs
     unidocAllSources in (JavaUnidoc, unidoc) := {
@@ -367,13 +378,15 @@ object TestSettings {
     javaOptions in Test += "-Dspark.testing=1",
     javaOptions in Test += "-Dspark.port.maxRetries=100",
     javaOptions in Test += "-Dspark.ui.enabled=false",
+    javaOptions in Test += "-Dspark.ui.showConsoleProgress=false",
+    javaOptions in Test += "-Dspark.driver.allowMultipleContexts=true",
     javaOptions in Test += "-Dsun.io.serialization.extendedDebugInfo=true",
     javaOptions in Test ++= System.getProperties.filter(_._1 startsWith "spark")
       .map { case (k,v) => s"-D$k=$v" }.toSeq,
     javaOptions in Test ++= "-Xmx3g -XX:PermSize=128M -XX:MaxNewSize=256m -XX:MaxPermSize=1g"
       .split(" ").toSeq,
     // This places test scope jars on the classpath of executors during tests.
-    javaOptions in Test += 
+    javaOptions in Test +=
       "-Dspark.executor.extraClassPath=" + (fullClasspath in Test).value.files.
       map(_.getAbsolutePath).mkString(":").stripSuffix(":"),
     javaOptions += "-Xmx3g",
