@@ -32,6 +32,7 @@ import org.apache.hadoop.hive.ql.metadata.Hive
 import org.apache.hadoop.hive.ql.session.SessionState
 import org.apache.hadoop.hive.shims.ShimLoader
 import org.apache.hadoop.security.UserGroupInformation
+import org.apache.hive.service.server.ServerOptionsProcessorWrapper
 import org.apache.hive.service.cli._
 import org.apache.hive.service.cli.operation.ExecuteStatementOperation
 import org.apache.hive.service.cli.session.HiveSession
@@ -48,13 +49,16 @@ import org.apache.spark.sql.{SchemaRDD, Row => SparkRow}
  * A compatibility layer for interacting with Hive version 0.12.0.
  */
 private[thriftserver] object HiveThriftServerShim {
-  val version = "0.13.1"
+  val version = "0.14.10"
 
   def setServerUserName(sparkServiceUGI: UserGroupInformation, sparkCliService:SparkSQLCLIService) = {
     setSuperField(sparkCliService, "serviceUGI", sparkServiceUGI)
   }
 
-  def init(args: Array[String]) = {}
+  def init(args: Array[String]) = {
+    val wrap = new ServerOptionsProcessorWrapper
+    wrap.init(args)
+  }
 }
 
 private[hive] class SparkSQLDriver(val _context: HiveContext = SparkSQLEnv.hiveContext)
@@ -83,9 +87,6 @@ private[hive] class SparkExecuteStatementOperation(
   private var iter: Iterator[SparkRow] = _
   private var dataTypes: Array[DataType] = _
 
-  override def  runInternal() = {
-
-  }
   def runInternal(cmd: String) = {
     try {
       result = hiveContext.sql(cmd)
@@ -210,7 +211,7 @@ private[hive] class SparkExecuteStatementOperation(
   }
 
 
-  override def run(): Unit = {
+  override def runInternal(): Unit = {
     logInfo(s"Running query '$statement'")
     val opConfig: HiveConf = getConfigForOperation
     setState(OperationState.RUNNING)

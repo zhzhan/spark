@@ -224,9 +224,9 @@ private[hive] object HiveQl {
      * Otherwise, there will be Null pointer exception,
      * when retrieving properties form HiveConf.
      */
-    val hContext = new Context(new HiveConf())
-    val node = ParseUtils.findRootNonNullToken((new ParseDriver).parse(sql, hContext))
-    hContext.clear()
+    //val hContext = new Context(new HiveConf())
+    val node = ParseUtils.findRootNonNullToken((new ParseDriver).parse(sql, null))
+   // hContext.clear()
     node
   }
 
@@ -379,7 +379,7 @@ private[hive] object HiveQl {
   protected def nameExpressions(exprs: Seq[Expression]): Seq[NamedExpression] = {
     exprs.zipWithIndex.map {
       case (ne: NamedExpression, _) => ne
-      case (e, i) => Alias(e, s"c_$i")()
+      case (e, i) => Alias(e, s"_c$i")()
     }
   }
 
@@ -1128,7 +1128,10 @@ private[hive] object HiveQl {
         Explode(attributes, nodeToExpr(child))
 
       case Token("TOK_FUNCTION", Token(functionName, Nil) :: children) =>
-        HiveGenericUdtf(functionName, attributes, children.map(nodeToExpr))
+        HiveGenericUdtf(
+          new HiveFunctionWrapper(functionName),
+          attributes,
+          children.map(nodeToExpr))
 
       case a: ASTNode =>
         throw new NotImplementedError(

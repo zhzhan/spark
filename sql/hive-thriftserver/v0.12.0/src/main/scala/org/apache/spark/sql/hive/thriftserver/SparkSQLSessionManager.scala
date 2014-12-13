@@ -40,7 +40,7 @@ private[hive] class SparkSQLSessionManager(hiveContext: HiveContext)
     getAncestorField[Log](this, 3, "LOG").info(
       s"HiveServer2: Async execution pool size $backgroundPoolSize")
 
-    val sparkSqlOperationManager = new SparkSQLOperationManager(hiveContext)
+    val sparkSqlOperationManager = new SparkSQLOperationManager(SparkSQLEnv.hiveContext)
     setSuperField(this, "operationManager", sparkSqlOperationManager)
     addService(sparkSqlOperationManager)
 

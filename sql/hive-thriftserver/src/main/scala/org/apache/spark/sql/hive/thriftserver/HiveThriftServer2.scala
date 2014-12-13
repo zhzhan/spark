@@ -19,6 +19,7 @@ package org.apache.spark.sql.hive.thriftserver
 
 import org.apache.commons.logging.LogFactory
 import org.apache.hadoop.hive.conf.HiveConf
+import org.apache.hadoop.hive.ql.session.SessionState
 import org.apache.hive.service.cli.thrift.ThriftBinaryCLIService
 import org.apache.hive.service.server.{HiveServer2}
 
@@ -41,7 +42,7 @@ object HiveThriftServer2 extends Logging {
    */
   @DeveloperApi
   def startWithContext(sqlContext: HiveContext): Unit = {
-    val server = new HiveThriftServer2(sqlContext)
+    val server = new HiveThriftServer2()
     server.init(sqlContext.hiveconf)
     server.start()
   }
@@ -51,7 +52,7 @@ object HiveThriftServer2 extends Logging {
     HiveThriftServerShim.init(args)
 
     logInfo("Starting SparkContext")
-    SparkSQLEnv.init()
+    //SparkSQLEnv.init()
 
     Runtime.getRuntime.addShutdownHook(
       new Thread() {
@@ -62,8 +63,8 @@ object HiveThriftServer2 extends Logging {
     )
 
     try {
-      val server = new HiveThriftServer2(SparkSQLEnv.hiveContext)
-      server.init(SparkSQLEnv.hiveContext.hiveconf)
+      val server = new HiveThriftServer2()
+      server.init(new HiveConf())
       server.start()
       logInfo("HiveThriftServer2 started")
     } catch {
@@ -74,12 +75,12 @@ object HiveThriftServer2 extends Logging {
   }
 }
 
-private[hive] class HiveThriftServer2(hiveContext: HiveContext)
+private[hive] class HiveThriftServer2()
   extends HiveServer2
   with ReflectedCompositeService {
 
   override def init(hiveConf: HiveConf) {
-    val sparkSqlCliService = new SparkSQLCLIService(hiveContext, this)
+    val sparkSqlCliService = new SparkSQLCLIService(this)
     setSuperField(this, "cliService", sparkSqlCliService)
     addService(sparkSqlCliService)
 

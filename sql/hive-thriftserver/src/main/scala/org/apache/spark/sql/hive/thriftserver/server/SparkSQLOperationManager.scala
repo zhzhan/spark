@@ -26,11 +26,11 @@ import org.apache.hive.service.cli.session.HiveSession
 import org.apache.spark.Logging
 import org.apache.spark.sql.hive.HiveContext
 import org.apache.spark.sql.hive.thriftserver.{SparkExecuteStatementOperation, ReflectionUtils}
-
+import  org.apache.spark.sql.hive.thriftserver.SparkSQLEnv
 /**
  * Executes queries using Spark SQL, and maintains a list of handles to active queries.
  */
-private[thriftserver] class SparkSQLOperationManager(hiveContext: HiveContext)
+private[thriftserver] class SparkSQLOperationManager()
   extends OperationManager with Logging {
 
   val handleToOperation = ReflectionUtils
@@ -46,7 +46,7 @@ private[thriftserver] class SparkSQLOperationManager(hiveContext: HiveContext)
       async: Boolean): ExecuteStatementOperation = synchronized {
 
     val operation = new SparkExecuteStatementOperation(parentSession, statement, confOverlay)(
-      hiveContext, sessionToActivePool)
+      SparkSQLEnv.hiveContext, sessionToActivePool)
     handleToOperation.put(operation.getHandle, operation)
     operation
   }

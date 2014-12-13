@@ -28,7 +28,7 @@ import org.apache.spark.sql.hive.HiveContext
 import org.apache.spark.sql.hive.thriftserver.ReflectionUtils._
 import org.apache.spark.sql.hive.thriftserver.server.SparkSQLOperationManager
 
-private[hive] class SparkSQLSessionManager(hiveContext: HiveContext, hiveServer2: HiveServer2)
+private[hive] class SparkSQLSessionManager(hiveServer2: HiveServer2)
   extends SessionManager(hiveServer2)
   with ReflectedCompositeService {
 
@@ -40,7 +40,7 @@ private[hive] class SparkSQLSessionManager(hiveContext: HiveContext, hiveServer2
     getAncestorField[Log](this, 3, "LOG").info(
       s"HiveServer2: Async execution pool size $backgroundPoolSize")
 
-    val sparkSqlOperationManager = new SparkSQLOperationManager(hiveContext)
+    val sparkSqlOperationManager = new SparkSQLOperationManager()
     setSuperField(this, "operationManager", sparkSqlOperationManager)
     addService(sparkSqlOperationManager)
 

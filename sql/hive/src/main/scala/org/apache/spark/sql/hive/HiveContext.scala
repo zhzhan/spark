@@ -17,8 +17,9 @@
 
 package org.apache.spark.sql.hive
 
-import java.io.{BufferedReader, File, InputStreamReader, PrintStream}
+import java.io._
 import java.sql.{Date, Timestamp}
+import javax.security.auth.login.LoginException
 
 import scala.collection.JavaConversions._
 import scala.language.implicitConversions
@@ -42,7 +43,8 @@ import org.apache.spark.sql.catalyst.types.decimal.Decimal
 import org.apache.spark.sql.execution.{ExtractPythonUdfs, QueryExecutionException, Command => PhysicalCommand}
 import org.apache.spark.sql.hive.execution.DescribeHiveTableCommand
 import org.apache.spark.sql.sources.DataSourceStrategy
-
+import org.apache.hadoop.hive.shims.ShimLoader
+import org.apache.hive.service.auth.HiveAuthFactory
 /**
  * DEPRECATED: Use HiveContext instead.
  */
@@ -75,6 +77,17 @@ class HiveContext(sc: SparkContext) extends SQLContext(sc) {
   // Change the default SQL dialect to HiveQL
   override private[spark] def dialect: String = getConf(SQLConf.DIALECT, "hiveql")
 
+/*
+  if (ShimLoader.getHadoopShims.isSecurityEnabled) {
+    val hiveConf = new HiveConf
+    try {
+      HiveAuthFactory.loginFromKeytab(hiveConf)
+      ShimLoader.getHadoopShims.getUGIForConf(hiveConf)
+    } catch {
+      case e @ (_: IOException | _: LoginException) =>
+        throw new Exception("Unable to login to kerberos with given principal/keytab", e)
+    }
+  }*/
   /**
    * When true, enables an experimental feature where metastore tables that use the parquet SerDe
    * are automatically converted to use the Spark SQL parquet table scan, instead of the Hive
@@ -378,7 +391,7 @@ class HiveContext(sc: SparkContext) extends SQLContext(sc) {
         command.executeCollect().map(_.head.toString)
 
       case other =>
-        val result: Seq[Seq[Any]] = toRdd.map(_.copy()).collect().toSeq
+        val result: Seq[Seq[Any]] = other.executeCollect().toSeq
         // We need the types so we can output struct field names
         val types = analyzed.output.map(_.dataType)
         // Reformat to match hive tab delimited output.
@@ -417,6 +430,8 @@ object HiveContext {
     case (bin: Array[Byte], BinaryType) => new String(bin, "UTF-8")
     case (decimal: Decimal, DecimalType()) =>  // Hive strips trailing zeros so use its toString
       HiveShim.createDecimal(decimal.toBigDecimal.underlying()).toString
+    case (decimal: BigDecimal, DecimalType()) =>
+      HiveShim.createDecimal(decimal.underlying()).toString
     case (other, tpe) if primitiveTypes contains tpe => other.toString
   }
 
