@@ -73,7 +73,7 @@ class HiveFunctionWrapper(var functionClassName: String) extends java.io.Externa
       classOf[InputStream],
       classOf[Class[_]])
     method.setAccessible(true)
-
+    private static <T> T deserializeObjectByKryo(Kryo kryo, InputStream in, Class<T> clazz ) {
     method
   }
 

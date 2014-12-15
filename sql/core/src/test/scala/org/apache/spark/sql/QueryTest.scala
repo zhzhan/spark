@@ -35,7 +35,8 @@ class QueryTest extends PlanTest {
     val outputs = rdd.collect().map(_.mkString).mkString
     for (key <- keywords) {
       if (exists) {
-        assert(outputs.contains(key), s"Failed for $rdd ($key doens't exist in result)")
+        System.out.println(" now " + outputs + " start: ")
+        assert(outputs.contains(key), s"*** $outputs ***Failed for $rdd ($key doens't exist in result)")
       } else {
         assert(!outputs.contains(key), s"Failed for $rdd ($key existed in the result)")
       }
