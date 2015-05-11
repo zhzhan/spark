@@ -268,6 +268,12 @@ class TableScanSuite extends DataSourceTest {
     "SELECT structFieldComplex.Value.`value_(2)` FROM tableWithSchema",
     (1 to 10).map(i => Row(Seq(new Date(1970, 1, i + 1)))).toSeq)
 
+  test("Conversion test") {
+    val rdd = sql("SELECT floatField, doubleField, string$%Field FROM tableWithSchema where int_Field <= 5")    
+    val doubleFileds = rdd.map(t => t(1))
+    assert(doubleFileds.count() == 5)
+  }
+
   test("Caching")  {
     // Cached Query Execution
     cacheTable("oneToTen")

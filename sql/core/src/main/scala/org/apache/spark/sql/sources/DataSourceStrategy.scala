@@ -120,7 +120,8 @@ private[sql] object DataSourceStrategy extends Strategy {
       output: Seq[Attribute],
       rdd: RDD[Row]): SparkPlan = {
     val converted = if (relation.needConversion) {
-      execution.RDDConversions.rowToRowRdd(rdd, StructType.fromAttributes(output))
+      // execution.RDDConversions.rowToRowRdd(rdd, StructType.fromAttributes(output))
+      execution.RDDConversions.rowToRowRdd(rdd, relation.schema)
     } else {
       rdd
     }
