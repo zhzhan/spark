@@ -109,10 +109,10 @@ class ParquetPartitionDiscoverySuite extends QueryTest with ParquetTest with Sha
       "hdfs://host:9000/path/a=10/b=20",
       "hdfs://host:9000/path/a=10.5/b=hello")
 
-    val exception = intercept[Exception] {
+    val error = intercept[AssertionError] {
       parsePartitions(paths.map(new Path(_)), defaultPartitionName, true)
     }
-    assert(exception.getMessage().contains("Conflicting directory structures detected"))
+    assert(error.getMessage.contains("Conflicting directory structures detected"))
   }
 
   test("parse partitions") {

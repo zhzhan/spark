@@ -49,10 +49,6 @@ private[sql] object PartitioningUtils {
     require(columnNames.size == literals.size)
   }
 
-  private[sql] object PartitionValues {
-    val empty = PartitionValues(Seq.empty, Seq.empty)
-  }
-
   /**
    * Given a group of qualified paths, tries to parse them and returns a partition specification.
    * For example, given:
@@ -85,17 +81,25 @@ private[sql] object PartitioningUtils {
       parsePartition(path, defaultPartitionName, typeInference).map(path -> _)
     }
 
-    val ep = pathsWithPartitionValues.filter(_._2 == PartitionValues.empty)
-    // Make sure all data are either partitioned or non-partitioned.
-    // The consistency detail will be validated by resolvePartitions
-    assert(ep.length == 0 || ep.length == pathsWithPartitionValues.length,
-      s"Conflicting directory structures detected with ${ep.length} non-partitioned files " +
-        s"and ${pathsWithPartitionValues.length - ep.length} partitioned files")
-
-    if (pathsWithPartitionValues.isEmpty || ep.length == pathsWithPartitionValues.length) {
+    if (pathsWithPartitionValues.isEmpty) {
       // This dataset is not partitioned.
       PartitionSpec.emptySpec
     } else {
+      // Make sure all data are either partitioned or non-partitioned.
+      // The consistency detail will be validated by resolvePartitions
+      // Although the ut has a lot test covering "_temporary", we should never hit such scenario,
+      // as it has been filtered out by HadoopFsRelation.listLeafFiles
+      if (!pathsWithPartitionValues.isEmpty && pathsWithPartitionValues.length != paths.length) {
+        val sb = new StringBuilder
+        paths.foreach( path => sb.append(path.toString + "\n"))
+        // scalastyle:off println
+        println(s"paths: ${sb.toString()}")
+        // scalastyle:on println
+      }
+      assert(pathsWithPartitionValues.isEmpty || pathsWithPartitionValues.length == paths.length,
+        s"Conflicting directory structures detected " +
+          s"with ${pathsWithPartitionValues.length} partitioned files " +
+          s"and ${paths.length - pathsWithPartitionValues.length} non-partitioned files")
       // This dataset is partitioned. We need to check whether all partitions have the same
       // partition columns and resolve potential type conflicts.
       val resolvedPartitionValues = resolvePartitions(pathsWithPartitionValues)
@@ -157,8 +161,9 @@ private[sql] object PartitioningUtils {
       chopped = chopped.getParent
       finished = maybeColumn.isEmpty || chopped.getParent == null
     }
+
     if (columns.isEmpty) {
-      Some(PartitionValues.empty)
+      None
     } else {
       val (columnNames, values) = columns.reverse.unzip
       Some(PartitionValues(columnNames, values))
