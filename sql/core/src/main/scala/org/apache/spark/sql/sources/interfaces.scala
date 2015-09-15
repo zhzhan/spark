@@ -546,6 +546,10 @@ abstract class HadoopFsRelation private[sql](maybePartitionSpec: Option[Partitio
   private def discoverPartitions(): PartitionSpec = {
     val typeInference = sqlContext.conf.partitionColumnTypeInferenceEnabled()
     // We use leaf dirs containing data files to discover the schema.
+    // scalastyle:off println
+    println(s"file paths:")
+    fileStatusCache.leafDirToChildrenFiles.values.foreach(x => x.foreach( y => println(y.getPath.toString)))
+    // scalastyle:on println
     val leafDirs = fileStatusCache.leafDirToChildrenFiles.keys.toSeq
     PartitioningUtils.parsePartitions(leafDirs, PartitioningUtils.DEFAULT_PARTITION_NAME,
       typeInference)
@@ -742,7 +746,7 @@ private[sql] object HadoopFsRelation extends Logging {
   def listLeafFiles(fs: FileSystem, status: FileStatus): Array[FileStatus] = {
     logInfo(s"Listing ${status.getPath}")
     val name = status.getPath.getName.toLowerCase
-    if (name == "_temporary" || name.startsWith(".")) {
+    if (name == "_temporary" || name.startsWith(".") || name.startsWith("_SUCCESS")) {
       Array.empty
     } else {
       val (dirs, files) = fs.listStatus(status.getPath).partition(_.isDir)
