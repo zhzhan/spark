@@ -25,18 +25,19 @@ import com.google.common.base.Objects
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileStatus, Path}
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars
-import org.apache.hadoop.hive.ql.io.orc.{OrcInputFormat, OrcOutputFormat, OrcSerde, OrcSplit, OrcStruct}
+import org.apache.hadoop.hive.ql.io.orc._
 import org.apache.hadoop.hive.serde2.objectinspector.SettableStructObjectInspector
 import org.apache.hadoop.hive.serde2.typeinfo.{TypeInfoUtils, StructTypeInfo}
 import org.apache.hadoop.io.{NullWritable, Writable}
-import org.apache.hadoop.mapred.{InputFormat => MapRedInputFormat, JobConf, OutputFormat => MapRedOutputFormat, RecordWriter, Reporter}
+import org.apache.hadoop.mapreduce.{InputFormat => MapRedInputFormat,  OutputFormat => MapRedOutputFormat}
+import org.apache.hadoop.mapreduce.RecordWriter
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat
 import org.apache.hadoop.mapreduce.{Job, TaskAttemptContext}
 
 import org.apache.spark.Logging
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.mapred.SparkHadoopMapRedUtil
-import org.apache.spark.rdd.{HadoopRDD, RDD}
+import org.apache.spark.rdd.{NewHadoopRDD, HadoopRDD, RDD}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.execution.datasources.PartitionSpec
@@ -105,13 +106,9 @@ private[orc] class OrcOutputWriter(
     val taskAttemptId = SparkHadoopUtil.get.getTaskAttemptIDFromTaskAttemptContext(context)
     val partition = taskAttemptId.getTaskID.getId
     val filename = f"part-r-$partition%05d-$uniqueWriteJobId.orc"
-
-    new OrcOutputFormat().getRecordWriter(
-      new Path(path, filename).getFileSystem(conf),
-      conf.asInstanceOf[JobConf],
-      new Path(path, filename).toString,
-      Reporter.NULL
-    ).asInstanceOf[RecordWriter[NullWritable, Writable]]
+    context.getConfiguration.set("mapreduce.output.basename", filename)
+    new OrcNewOutputFormat().getRecordWriter(context)
+      .asInstanceOf[RecordWriter[NullWritable, Writable]]
   }
 
   override def write(row: Row): Unit = throw new UnsupportedOperationException("call writeInternal")
@@ -146,7 +143,7 @@ private[orc] class OrcOutputWriter(
 
   override def close(): Unit = {
     if (recordWriterInstantiated) {
-      recordWriter.close(Reporter.NULL)
+      recordWriter.close(context)
     }
   }
 }
@@ -208,15 +205,10 @@ private[sql] class OrcRelation(
   }
 
   override def prepareJobForWrite(job: Job): OutputWriterFactory = {
-    SparkHadoopUtil.get.getConfigurationFromJobContext(job) match {
-      case conf: JobConf =>
-        conf.setOutputFormat(classOf[OrcOutputFormat])
-      case conf =>
-        conf.setClass(
-          "mapred.output.format.class",
-          classOf[OrcOutputFormat],
-          classOf[MapRedOutputFormat[_, _]])
-    }
+    SparkHadoopUtil.get.getConfigurationFromJobContext(job).setClass(
+      "mapred.output.format.class",
+      classOf[OrcNewOutputFormat],
+      classOf[MapRedOutputFormat[_, _]])
 
     new OutputWriterFactory {
       override def newInstance(
@@ -294,6 +286,7 @@ private[orc] case class OrcTableScan(
     // Tries to push down filters if ORC filter push-down is enabled
     if (sqlContext.conf.orcFilterPushDown) {
       OrcFilters.createFilter(filters).foreach { f =>
+        println(s"filter pushdown enabled with filter $f")
         conf.set(OrcTableScan.SARG_PUSHDOWN, f.toKryo)
         conf.setBoolean(ConfVars.HIVEOPTINDEXFILTER.varname, true)
       }
@@ -309,19 +302,19 @@ private[orc] case class OrcTableScan(
     FileInputFormat.setInputPaths(job, inputPaths.map(_.getPath): _*)
 
     val inputFormatClass =
-      classOf[OrcInputFormat]
+      classOf[OrcNewInputFormat]
         .asInstanceOf[Class[_ <: MapRedInputFormat[NullWritable, Writable]]]
 
-    val rdd = sqlContext.sparkContext.hadoopRDD(
-      conf.asInstanceOf[JobConf],
+    val rdd = sqlContext.sparkContext.newAPIHadoopRDD(
+      conf,
       inputFormatClass,
       classOf[NullWritable],
       classOf[Writable]
-    ).asInstanceOf[HadoopRDD[NullWritable, Writable]]
+    ).asInstanceOf[NewHadoopRDD[NullWritable, Writable]]
 
     val wrappedConf = new SerializableConfiguration(conf)
 
-    rdd.mapPartitionsWithInputSplit { case (split: OrcSplit, iterator) =>
+    rdd.mapPartitionsWithInputSplit { case (split: OrcNewSplit, iterator) =>
       val mutableRow = new SpecificMutableRow(attributes.map(_.dataType))
       fillObject(
         split.getPath.toString,

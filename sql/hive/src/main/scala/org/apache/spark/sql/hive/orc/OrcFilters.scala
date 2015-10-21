@@ -32,6 +32,7 @@ import org.apache.spark.sql.sources._
  */
 private[orc] object OrcFilters extends Logging {
   def createFilter(filters: Array[Filter]): Option[SearchArgument] = {
+    filters.foreach(println(_))
     for {
       // Combines all filters with `And`s to produce a single conjunction predicate
       conjunction <- filters.reduceOption(And)
