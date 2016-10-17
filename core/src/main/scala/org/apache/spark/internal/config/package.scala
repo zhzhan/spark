@@ -206,4 +206,9 @@ package object config {
       "encountering corrupt files and contents that have been read will still be returned.")
     .booleanConf
     .createWithDefault(false)
+
+  private[spark] val SPARK_SCHEDULER__TASK_ASSIGNER = ConfigBuilder("spark.scheduler.taskAssigner")
+    .doc("The task assigner to schedule tasks on workers.")
+    .stringConf
+    .createWithDefault("roundrobin")
 }

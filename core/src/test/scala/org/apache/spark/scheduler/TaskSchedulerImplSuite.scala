@@ -109,6 +109,118 @@ class TaskSchedulerImplSuite extends SparkFunSuite with LocalSparkContext with B
     assert(!failedTaskSet)
   }
 
+  test("User can specify the roundrobin task assigner") {
+    val taskScheduler = setupScheduler(("spark.scheduler.taskAssigner", "roundrobin"))
+    val numFreeCores = 1
+    val workerOffers = IndexedSeq(new WorkerOffer("executor0", "host0", numFreeCores),
+      new WorkerOffer("executor1", "host1", numFreeCores))
+    // Repeatedly try to schedule a 1-task job, and make sure that it doesn't always
+    // get scheduled on the same executor. While there is a chance this test will fail
+    // because the task randomly gets placed on the first executor all 1000 times, the
+    // probability of that happening is 2^-1000 (so sufficiently small to be considered
+    // negligible).
+    val numTrials = 1000
+    val selectedExecutorIds = 1.to(numTrials).map { _ =>
+      val taskSet = FakeTask.createTaskSet(1)
+      taskScheduler.submitTasks(taskSet)
+      val taskDescriptions = taskScheduler.resourceOffers(workerOffers).flatten
+      assert(1 === taskDescriptions.length)
+      taskDescriptions(0).executorId
+    }
+    val count = selectedExecutorIds.count(_ == workerOffers(0).executorId)
+    assert(count > 0)
+    assert(count < numTrials)
+    assert(!failedTaskSet)
+  }
+
+  test("Fallback to roundrobin when the task assigner provided is not valid") {
+    val taskScheduler = setupScheduler("spark.scheduler.taskAssigner" -> "invalid")
+    val numFreeCores = 1
+    val workerOffers = IndexedSeq(new WorkerOffer("executor0", "host0", numFreeCores),
+      new WorkerOffer("executor1", "host1", numFreeCores))
+    // Repeatedly try to schedule a 1-task job, and make sure that it doesn't always
+    // get scheduled on the same executor. While there is a chance this test will fail
+    // because the task randomly gets placed on the first executor all 1000 times, the
+    // probability of that happening is 2^-1000 (so sufficiently small to be considered
+    // negligible).
+    val numTrials = 1000
+    val selectedExecutorIds = 1.to(numTrials).map { _ =>
+      val taskSet = FakeTask.createTaskSet(1)
+      taskScheduler.submitTasks(taskSet)
+      val taskDescriptions = taskScheduler.resourceOffers(workerOffers).flatten
+      assert(1 === taskDescriptions.length)
+      taskDescriptions(0).executorId
+    }
+    val count = selectedExecutorIds.count(_ == workerOffers(0).executorId)
+    assert(count > 0)
+    assert(count < numTrials)
+    assert(!failedTaskSet)
+  }
+
+  test("Scheduler balance the assignment to the worker with more free cores") {
+    val taskScheduler = setupScheduler("spark.scheduler.taskAssigner" -> "balanced")
+    val workerOffers = IndexedSeq(new WorkerOffer("executor0", "host0", 2),
+      new WorkerOffer("executor1", "host1", 4))
+    val selectedExecutorIds = {
+      val taskSet = FakeTask.createTaskSet(2)
+      taskScheduler.submitTasks(taskSet)
+      val taskDescriptions = taskScheduler.resourceOffers(workerOffers).flatten
+      assert(2 === taskDescriptions.length)
+      taskDescriptions.map(_.executorId)
+    }
+    val count = selectedExecutorIds.count(_ == workerOffers(1).executorId)
+    assert(count == 2)
+    assert(!failedTaskSet)
+  }
+
+  test("Scheduler balance the assignment across workers with same free cores") {
+    val taskScheduler = setupScheduler("spark.scheduler.taskAssigner" -> "balanced")
+    val workerOffers = IndexedSeq(new WorkerOffer("executor0", "host0", 2),
+      new WorkerOffer("executor1", "host1", 2))
+    val selectedExecutorIds = {
+      val taskSet = FakeTask.createTaskSet(2)
+      taskScheduler.submitTasks(taskSet)
+      val taskDescriptions = taskScheduler.resourceOffers(workerOffers).flatten
+      assert(2 === taskDescriptions.length)
+      taskDescriptions.map(_.executorId)
+    }
+    val count = selectedExecutorIds.count(_ == workerOffers(1).executorId)
+    assert(count == 1)
+    assert(!failedTaskSet)
+  }
+
+  test("Scheduler packs the assignment to workers with less free cores") {
+    val taskScheduler = setupScheduler("spark.scheduler.taskAssigner" -> "packed")
+    val workerOffers = IndexedSeq(new WorkerOffer("executor0", "host0", 2),
+      new WorkerOffer("executor1", "host1", 4))
+    val selectedExecutorIds = {
+      val taskSet = FakeTask.createTaskSet(2)
+      taskScheduler.submitTasks(taskSet)
+      val taskDescriptions = taskScheduler.resourceOffers(workerOffers).flatten
+      assert(2 === taskDescriptions.length)
+      taskDescriptions.map(_.executorId)
+    }
+    val count = selectedExecutorIds.count(_ == workerOffers(0).executorId)
+    assert(count == 2)
+    assert(!failedTaskSet)
+  }
+
+  test("Scheduler keeps packing the assignment to the same worker") {
+    val taskScheduler = setupScheduler("spark.scheduler.taskAssigner" -> "packed")
+    val workerOffers = IndexedSeq(new WorkerOffer("executor0", "host0", 4),
+      new WorkerOffer("executor1", "host1", 4))
+    val selectedExecutorIds = {
+      val taskSet = FakeTask.createTaskSet(4)
+      taskScheduler.submitTasks(taskSet)
+      val taskDescriptions = taskScheduler.resourceOffers(workerOffers).flatten
+      assert(4 === taskDescriptions.length)
+      taskDescriptions.map(_.executorId)
+    }
+    val count = selectedExecutorIds.count(_ == workerOffers(0).executorId)
+    assert(count == 4)
+    assert(!failedTaskSet)
+  }
+
   test("Scheduler correctly accounts for multiple CPUs per task") {
     val taskCpus = 2
     val taskScheduler = setupScheduler("spark.task.cpus" -> taskCpus.toString)
