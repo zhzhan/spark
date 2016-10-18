@@ -85,8 +85,7 @@ class TaskSchedulerImplSuite extends SparkFunSuite with LocalSparkContext with B
     taskScheduler
   }
 
-  test("Scheduler does not always schedule tasks on the same workers") {
-    val taskScheduler = setupScheduler()
+  private def roundrobin(taskScheduler: TaskSchedulerImpl): Unit = {
     val numFreeCores = 1
     val workerOffers = IndexedSeq(new WorkerOffer("executor0", "host0", numFreeCores),
       new WorkerOffer("executor1", "host1", numFreeCores))
@@ -107,54 +106,22 @@ class TaskSchedulerImplSuite extends SparkFunSuite with LocalSparkContext with B
     assert(count > 0)
     assert(count < numTrials)
     assert(!failedTaskSet)
+  }
+
+  test("Scheduler does not always schedule tasks on the same workers") {
+    val taskScheduler = setupScheduler()
+    roundrobin(taskScheduler)
+
   }
 
   test("User can specify the roundrobin task assigner") {
     val taskScheduler = setupScheduler(("spark.scheduler.taskAssigner", "RoUndrObin"))
-    val numFreeCores = 1
-    val workerOffers = IndexedSeq(new WorkerOffer("executor0", "host0", numFreeCores),
-      new WorkerOffer("executor1", "host1", numFreeCores))
-    // Repeatedly try to schedule a 1-task job, and make sure that it doesn't always
-    // get scheduled on the same executor. While there is a chance this test will fail
-    // because the task randomly gets placed on the first executor all 1000 times, the
-    // probability of that happening is 2^-1000 (so sufficiently small to be considered
-    // negligible).
-    val numTrials = 1000
-    val selectedExecutorIds = 1.to(numTrials).map { _ =>
-      val taskSet = FakeTask.createTaskSet(1)
-      taskScheduler.submitTasks(taskSet)
-      val taskDescriptions = taskScheduler.resourceOffers(workerOffers).flatten
-      assert(1 === taskDescriptions.length)
-      taskDescriptions(0).executorId
-    }
-    val count = selectedExecutorIds.count(_ == workerOffers(0).executorId)
-    assert(count > 0)
-    assert(count < numTrials)
-    assert(!failedTaskSet)
+    roundrobin(taskScheduler)
   }
 
   test("Fallback to roundrobin when the task assigner provided is not valid") {
     val taskScheduler = setupScheduler("spark.scheduler.taskAssigner" -> "invalid")
-    val numFreeCores = 1
-    val workerOffers = IndexedSeq(new WorkerOffer("executor0", "host0", numFreeCores),
-      new WorkerOffer("executor1", "host1", numFreeCores))
-    // Repeatedly try to schedule a 1-task job, and make sure that it doesn't always
-    // get scheduled on the same executor. While there is a chance this test will fail
-    // because the task randomly gets placed on the first executor all 1000 times, the
-    // probability of that happening is 2^-1000 (so sufficiently small to be considered
-    // negligible).
-    val numTrials = 1000
-    val selectedExecutorIds = 1.to(numTrials).map { _ =>
-      val taskSet = FakeTask.createTaskSet(1)
-      taskScheduler.submitTasks(taskSet)
-      val taskDescriptions = taskScheduler.resourceOffers(workerOffers).flatten
-      assert(1 === taskDescriptions.length)
-      taskDescriptions(0).executorId
-    }
-    val count = selectedExecutorIds.count(_ == workerOffers(0).executorId)
-    assert(count > 0)
-    assert(count < numTrials)
-    assert(!failedTaskSet)
+    roundrobin(taskScheduler)
   }
 
   test("Scheduler balance the assignment to the worker with more free cores") {
