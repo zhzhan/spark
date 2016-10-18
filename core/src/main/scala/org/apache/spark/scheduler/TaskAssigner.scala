@@ -25,14 +25,13 @@ import org.apache.spark.internal.{config, Logging}
 import org.apache.spark.SparkConf
 import org.apache.spark.util.Utils
 
-// Tracking the current state of the workers with available cores and assigned task list.
+/** Tracking the current state of the workers with available cores and assigned task list. */
 class OfferState(val workOffer: WorkerOffer) {
-  // the current remaining cores that can be allocated to tasks.
+  // The current remaining cores that can be allocated to tasks.
   var coresAvailable: Int = workOffer.cores
   // The list of tasks that are assigned to this worker.
   val tasks = new ArrayBuffer[TaskDescription](coresAvailable)
 }
-
 
 /**
  * TaskAssigner is the base class for all task assigner implementations, and can be
@@ -60,14 +59,14 @@ class OfferState(val workOffer: WorkerOffer) {
 
 private[scheduler] abstract class TaskAssigner {
   var offer: Seq[OfferState] = _
-  var cpuPerTask = 1
+  var CPUS_PER_TASK = 1
 
-  def withCpuPerTask(cpuPerTask: Int): Unit = {
-    this.cpuPerTask = cpuPerTask
+  def withCpuPerTask(CPUS_PER_TASK: Int): Unit = {
+    this.CPUS_PER_TASK = CPUS_PER_TASK
   }
 
   // The final assigned offer returned to TaskScheduler.
-  def tasks(): Seq[ArrayBuffer[TaskDescription]] = offer.map(_.tasks)
+  final def tasks(): Seq[ArrayBuffer[TaskDescription]] = offer.map(_.tasks)
 
   // Invoked at the beginning of resource offering to construct the offer with the workoffers.
   def construct(workOffer: Seq[WorkerOffer]): Unit = {
@@ -80,7 +79,7 @@ private[scheduler] abstract class TaskAssigner {
   // Whether there is offer available to be used inside of one round of Taskset assignment.
   def hasNext(): Boolean
 
-  // Return next available offer inside of one round of Taskset assignment.
+  // // Returned the next assigned offer based on the task assignment strategy.
   def getNext(): OfferState
 
   // Invoked by the TaskScheduler to indicate whether the current offer is accepted or not so that
@@ -105,20 +104,19 @@ object TaskAssigner extends Logging {
 
   def init(conf: SparkConf): TaskAssigner = {
     val assignerName = conf.get(config.SPARK_SCHEDULER__TASK_ASSIGNER.key, "roundrobin")
+      .toLowerCase()
     val className = assignerMap.getOrElse(assignerName, roundrobin)
-    val cpuPerTask = conf.getInt("spark.task.cpus", 1)
+    val CPUS_PER_TASK = conf.getInt("spark.task.cpus", 1)
     val assigner = try {
-      logInfo(s"""constructing assigner as $className""")
-      val ctor = Utils.classForName(className).getConstructor()
-      ctor.newInstance().asInstanceOf[TaskAssigner]
+      logInfo(s"Constructing an assigner as $className")
+      Utils.classForName(className).getConstructor()
+        .newInstance().asInstanceOf[TaskAssigner]
     } catch {
       case _: Throwable =>
-        logInfo(
-          s"""$assignerName cannot be constructed fallback to default
-             | $roundrobin""".stripMargin)
+        logInfo(s"$assignerName cannot be constructed, fallback to default $roundrobin.")
         new RoundRobinAssigner()
     }
-    assigner.withCpuPerTask(cpuPerTask)
+    assigner.withCpuPerTask(CPUS_PER_TASK)
     assigner
   }
 }
@@ -132,18 +130,21 @@ class RoundRobinAssigner extends TaskAssigner {
   override def construct(workOffer: Seq[WorkerOffer]): Unit = {
     offer = Random.shuffle(workOffer.map(o => new OfferState(o)))
   }
+
   override def init(): Unit = {
     idx = 0
   }
-  override def hasNext: Boolean = {
-    idx < offer.size
-  }
+
+  override def hasNext: Boolean = idx < offer.size
+
   override def getNext(): OfferState = {
     offer(idx)
   }
+
   override def offerAccepted(assigned: Boolean): Unit = {
     idx += 1
   }
+
   override def reset(): Unit = {
     super.reset
     idx = 0
@@ -155,37 +156,42 @@ class RoundRobinAssigner extends TaskAssigner {
  */
 class BalancedAssigner extends TaskAssigner {
   private var maxHeap: PriorityQueue[OfferState] = _
-  private var current: OfferState = _
+  private var currentOffer: OfferState = _
 
   override def construct(workOffer: Seq[WorkerOffer]): Unit = {
     offer = Random.shuffle(workOffer.map(o => new OfferState(o)))
   }
+
   implicit val ord: Ordering[OfferState] = new Ordering[OfferState] {
     def compare(x: OfferState, y: OfferState): Int = {
       return Ordering[Int].compare(x.coresAvailable, y.coresAvailable)
     }
   }
-  def init(): Unit = {
+
+  override def init(): Unit = {
     maxHeap = new PriorityQueue[OfferState]()
-    offer.filter(_.coresAvailable >= cpuPerTask).foreach(maxHeap.enqueue(_))
+    offer.filter(_.coresAvailable >= CPUS_PER_TASK).foreach(maxHeap.enqueue(_))
   }
+
   override def hasNext: Boolean = {
     maxHeap.nonEmpty
   }
+
   override def getNext(): OfferState = {
-    current = maxHeap.dequeue()
-    current
+    currentOffer = maxHeap.dequeue()
+    currentOffer
   }
 
   override def offerAccepted(assigned: Boolean): Unit = {
-    if (current.coresAvailable >= cpuPerTask && assigned) {
-      maxHeap.enqueue(current)
+    if (currentOffer.coresAvailable >= CPUS_PER_TASK && assigned) {
+      maxHeap.enqueue(currentOffer)
     }
   }
+
   override def reset(): Unit = {
     super.reset
     maxHeap = null
-    current = null
+    currentOffer = null
   }
 }
 
@@ -199,33 +205,31 @@ class BalancedAssigner extends TaskAssigner {
  */
 class PackedAssigner extends TaskAssigner {
   private var sorted: Seq[OfferState] = _
-  private var i = 0
-  private var current: OfferState = _
+  private var idx = 0
+  private var currentOffer: OfferState = _
 
   override def init(): Unit = {
-    i = 0
-    sorted = offer.filter(_.coresAvailable >= cpuPerTask).sortBy(_.coresAvailable)
+    idx = 0
+    sorted = offer.filter(_.coresAvailable >= CPUS_PER_TASK).sortBy(_.coresAvailable)
   }
 
-  override def hasNext: Boolean = {
-    i < sorted.size
-  }
+  override def hasNext: Boolean = idx < sorted.size
 
   override def getNext(): OfferState = {
-    current = sorted(i)
-    current
+    currentOffer = sorted(idx)
+    currentOffer
   }
 
   override def offerAccepted(assigned: Boolean): Unit = {
-    if (current.coresAvailable < cpuPerTask || !assigned) {
-      i += 1
+    if (currentOffer.coresAvailable < CPUS_PER_TASK || !assigned) {
+      idx += 1
     }
   }
 
   override def reset(): Unit = {
     super.reset
     sorted = null
-    current = null
-    i = 0
+    currentOffer = null
+    idx = 0
   }
 }
