@@ -1338,7 +1338,7 @@ Apart from these, the following properties are also available, and may be useful
   <td><code>spark.scheduler.taskAssigner</code></td>
   <td>roundrobin</td>
   <td>
-    Currently, there are three available task assigner, roundrobin, packed and balanced.
+    Currently, there are three available task assigners, roundrobin, packed and balanced.
     The strategy of how to allocate tasks among workers with free cores. By default, roundrobin
     with randomness is used, which tries to allocate task to workers with available cores in
     roundrobin manner. The packed one tries to
