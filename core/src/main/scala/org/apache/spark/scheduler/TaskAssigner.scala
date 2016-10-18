@@ -173,9 +173,7 @@ class BalancedAssigner extends TaskAssigner {
     offer.filter(_.coresAvailable >= CPUS_PER_TASK).foreach(maxHeap.enqueue(_))
   }
 
-  override def hasNext: Boolean = {
-    maxHeap.nonEmpty
-  }
+  override def hasNext: Boolean = maxHeap.nonEmpty
 
   override def getNext(): OfferState = {
     currentOffer = maxHeap.dequeue()
