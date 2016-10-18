@@ -111,7 +111,6 @@ class TaskSchedulerImplSuite extends SparkFunSuite with LocalSparkContext with B
   test("Scheduler does not always schedule tasks on the same workers") {
     val taskScheduler = setupScheduler()
     roundrobin(taskScheduler)
-
   }
 
   test("User can specify the roundrobin task assigner") {
