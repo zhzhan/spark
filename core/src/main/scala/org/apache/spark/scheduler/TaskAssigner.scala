@@ -66,7 +66,7 @@ private[scheduler] abstract class TaskAssigner {
   }
 
   // The final assigned offer returned to TaskScheduler.
-  final def tasks(): Seq[ArrayBuffer[TaskDescription]] = offer.map(_.tasks)
+  final def tasks: Seq[ArrayBuffer[TaskDescription]] = offer.map(_.tasks)
 
   // Invoked at the beginning of resource offering to construct the offer with the workoffers.
   def construct(workOffer: Seq[WorkerOffer]): Unit = {
@@ -77,7 +77,7 @@ private[scheduler] abstract class TaskAssigner {
   def init(): Unit
 
   // Whether there is offer available to be used inside of one round of Taskset assignment.
-  def hasNext(): Boolean
+  def hasNext: Boolean
 
   // // Returned the next assigned offer based on the task assignment strategy.
   def getNext(): OfferState
@@ -103,7 +103,7 @@ object TaskAssigner extends Logging {
       "balanced" -> balanced)
 
   def init(conf: SparkConf): TaskAssigner = {
-    val assignerName = conf.get(config.SPARK_SCHEDULER__TASK_ASSIGNER.key, "roundrobin")
+    val assignerName = conf.get(config.SPARK_SCHEDULER_TASK_ASSIGNER.key, "roundrobin")
       .toLowerCase()
     val className = assignerMap.getOrElse(assignerName, roundrobin)
     val CPUS_PER_TASK = conf.getInt("spark.task.cpus", 1)

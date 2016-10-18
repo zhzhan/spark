@@ -207,8 +207,8 @@ package object config {
     .booleanConf
     .createWithDefault(false)
 
-  private[spark] val SPARK_SCHEDULER__TASK_ASSIGNER = ConfigBuilder("spark.scheduler.taskAssigner")
-    .doc("The task assigner to schedule tasks on workers.")
+  private[spark] val SPARK_SCHEDULER_TASK_ASSIGNER = ConfigBuilder("spark.scheduler.taskAssigner")
+    .doc("The task assigner (roundrobin, packed, balanced) to schedule tasks on workers.")
     .stringConf
     .createWithDefault("roundrobin")
 }

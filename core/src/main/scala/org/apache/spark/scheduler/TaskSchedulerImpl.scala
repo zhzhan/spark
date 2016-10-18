@@ -251,21 +251,21 @@ private[spark] class TaskSchedulerImpl(
       taskAssigner: TaskAssigner) : Boolean = {
     var launchedTask = false
     taskAssigner.init()
-    while(taskAssigner.hasNext()) {
+    while(taskAssigner.hasNext) {
       var assigned = false
-      val current = taskAssigner.getNext()
-      val execId = current.workOffer.executorId
-      val host = current.workOffer.host
-      if (current.coresAvailable >= CPUS_PER_TASK) {
+      val currentOffer = taskAssigner.getNext()
+      val execId = currentOffer.workOffer.executorId
+      val host = currentOffer.workOffer.host
+      if (currentOffer.coresAvailable >= CPUS_PER_TASK) {
         try {
           for (task <- taskSet.resourceOffer(execId, host, maxLocality)) {
-            current.tasks += task
+            currentOffer.tasks += task
             val tid = task.taskId
             taskIdToTaskSetManager(tid) = taskSet
             taskIdToExecutorId(tid) = execId
             executorIdToTaskCount(execId) += 1
-            current.coresAvailable -=  CPUS_PER_TASK
-            assert(current.coresAvailable >= 0)
+            currentOffer.coresAvailable -= CPUS_PER_TASK
+            assert(currentOffer.coresAvailable >= 0)
             launchedTask = true
             assigned = true
           }
