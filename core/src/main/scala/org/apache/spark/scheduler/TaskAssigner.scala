@@ -79,7 +79,7 @@ private[scheduler] abstract class TaskAssigner {
   // Whether there is offer available to be used inside of one round of Taskset assignment.
   def hasNext: Boolean
 
-  // // Returned the next assigned offer based on the task assignment strategy.
+  // Returned the next assigned offer based on the task assignment strategy.
   def getNext(): OfferState
 
   // Invoked by the TaskScheduler to indicate whether the current offer is accepted or not so that
