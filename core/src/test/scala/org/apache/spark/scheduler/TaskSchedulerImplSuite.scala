@@ -110,7 +110,7 @@ class TaskSchedulerImplSuite extends SparkFunSuite with LocalSparkContext with B
   }
 
   test("User can specify the roundrobin task assigner") {
-    val taskScheduler = setupScheduler(("spark.scheduler.taskAssigner", "roundrobin"))
+    val taskScheduler = setupScheduler(("spark.scheduler.taskAssigner", "RoUndrObin"))
     val numFreeCores = 1
     val workerOffers = IndexedSeq(new WorkerOffer("executor0", "host0", numFreeCores),
       new WorkerOffer("executor1", "host1", numFreeCores))
@@ -158,7 +158,7 @@ class TaskSchedulerImplSuite extends SparkFunSuite with LocalSparkContext with B
   }
 
   test("Scheduler balance the assignment to the worker with more free cores") {
-    val taskScheduler = setupScheduler("spark.scheduler.taskAssigner" -> "balanced")
+    val taskScheduler = setupScheduler("spark.scheduler.taskAssigner" -> "BaLanceD")
     val workerOffers = IndexedSeq(new WorkerOffer("executor0", "host0", 2),
       new WorkerOffer("executor1", "host1", 4))
     val selectedExecutorIds = {
@@ -190,7 +190,7 @@ class TaskSchedulerImplSuite extends SparkFunSuite with LocalSparkContext with B
   }
 
   test("Scheduler packs the assignment to workers with less free cores") {
-    val taskScheduler = setupScheduler("spark.scheduler.taskAssigner" -> "packed")
+    val taskScheduler = setupScheduler("spark.scheduler.taskAssigner" -> "paCkeD")
     val workerOffers = IndexedSeq(new WorkerOffer("executor0", "host0", 2),
       new WorkerOffer("executor1", "host1", 4))
     val selectedExecutorIds = {
